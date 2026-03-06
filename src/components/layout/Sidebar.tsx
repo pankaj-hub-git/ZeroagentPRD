@@ -1,5 +1,6 @@
 import { useLayerStore } from '@/store/layers';
 import { useNavStore } from '@/store/navigation';
+import { useFilterOptions } from '@/hooks/useFilterOptions';
 import {
   Layers,
   DollarSign,
@@ -10,6 +11,7 @@ import {
   Globe,
   Receipt,
   ShieldAlert,
+  Filter,
 } from 'lucide-react';
 
 const ZOOM_LABELS: Record<number, string> = {
@@ -32,8 +34,20 @@ const LAYER_CONFIG = [
 ];
 
 export function Sidebar() {
-  const { zoomLevel, setZoomLevel, activeCommunity, activeTower } = useNavStore();
+  const {
+    zoomLevel,
+    setZoomLevel,
+    activeCommunity,
+    activeTower,
+    activeArea,
+    setActiveArea,
+    activeProject,
+    setActiveProject,
+    activeDeveloper,
+    setActiveDeveloper,
+  } = useNavStore();
   const layers = useLayerStore();
+  const filters = useFilterOptions();
 
   return (
     <aside className="w-[280px] bg-surface border-r border-border flex flex-col shrink-0 overflow-y-auto">
@@ -59,6 +73,56 @@ export function Sidebar() {
         </div>
         <div className="text-micro text-text-dim mt-1.5">
           {ZOOM_LABELS[zoomLevel]}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center gap-1.5 mb-3">
+          <Filter size={13} className="text-text-dim" />
+          <span className="text-label text-text-dim uppercase tracking-wider">
+            Filters
+          </span>
+        </div>
+        <div className="flex flex-col gap-2">
+          <select
+            value={activeArea ?? ''}
+            onChange={(e) => setActiveArea(e.target.value || null)}
+            className="w-full bg-white/5 border border-border rounded px-2 py-1.5 text-body text-text-secondary focus:border-gold focus:outline-none"
+          >
+            <option value="">All Areas</option>
+            {filters.areas.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={activeProject ?? ''}
+            onChange={(e) => setActiveProject(e.target.value || null)}
+            className="w-full bg-white/5 border border-border rounded px-2 py-1.5 text-body text-text-secondary focus:border-gold focus:outline-none"
+          >
+            <option value="">All Projects</option>
+            {filters.projects.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={activeDeveloper ?? ''}
+            onChange={(e) => setActiveDeveloper(e.target.value || null)}
+            className="w-full bg-white/5 border border-border rounded px-2 py-1.5 text-body text-text-secondary focus:border-gold focus:outline-none"
+          >
+            <option value="">All Developers</option>
+            {filters.developers.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

@@ -94,7 +94,7 @@ export function useFeedData() {
           .order('date', { ascending: false })
           .limit(20),
         sb
-          .from('bronze_government_catalysts')
+          .from('bronze.government_catalysts')
           .select('*')
           .order('date', { ascending: false })
           .limit(30),
@@ -103,6 +103,12 @@ export function useFeedData() {
           .select('*')
           .order('detected_at', { ascending: false }),
       ]);
+
+      // Log any Supabase errors for debugging
+      const sources = { policy, macro, safeHaven, government, crisis };
+      for (const [name, res] of Object.entries(sources)) {
+        if (res.error) console.error(`[Feed] ${name} query failed:`, res.error.message);
+      }
 
       const all: FeedItem[] = [
         ...(policy.data ?? []).map(mapPolicy),
