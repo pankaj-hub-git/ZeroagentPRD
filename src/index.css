@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #07071a;
+  --color-surface: #0d0d20;
+  --color-border: rgba(255, 255, 255, 0.03);
+  --color-gold: #c9a84c;
+  --color-text-primary: #e8ecf1;
+  --color-text-secondary: #8892a4;
+  --color-text-dim: #3a3f52;
+  --color-verified: #27ae60;
+  --color-warn: #f39c12;
+  --color-danger: #e74c3c;
+  --color-info: #2e75b6;
+  --color-conflict: #8e44ad;
+  --color-narrative: #95a5a6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-dim);
+  border-radius: 3px;
+}
+
+/* Ticker animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-animate {
+  animation: ticker-scroll 60s linear infinite;
+}
+
+/* Pulse animation for map layers */
+@keyframes pulse-ring {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.2; }
+  100% { opacity: 0.6; }
+}
+.pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+/* Score ring */
+.score-ring {
+  transition: stroke-dashoffset 0.6s ease;
+}
