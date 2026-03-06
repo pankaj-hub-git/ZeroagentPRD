@@ -1,7 +1,8 @@
 {
   "name": "zeroagent-prd",
   "version": "1.0.0",
-  "description": "ZeroAgent PRD - Supabase connection check",
+  "private": true,
+  "description": "ZeroAgent Intelligence Workstation",
   "type": "module",
   "scripts": {
     "check-connection": "node src/check-connection.js"
