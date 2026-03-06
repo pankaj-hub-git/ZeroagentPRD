@@ -1,12 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Activity, Map, BarChart3, Wrench, Briefcase } from 'lucide-react';
+import { Home, BarChart3, Search, Building2 } from 'lucide-react';
 
 const links = [
-  { to: '/', label: 'Feed', icon: Activity },
-  { to: '/map', label: 'Map', icon: Map },
-  { to: '/analyse', label: 'Analyse', icon: BarChart3 },
-  { to: '/tools', label: 'Tools', icon: Wrench },
-  { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { to: '/', label: 'Home', icon: Home },
+  { to: '/market', label: 'Market', icon: BarChart3 },
+  { to: '/explore', label: 'Explore', icon: Search },
+  { to: '/xray', label: 'X-Ray', icon: Building2 },
 ];
 
 export function TopNav() {
@@ -24,6 +23,7 @@ export function TopNav() {
           <NavLink
             key={l.to}
             to={l.to}
+            end={l.to === '/'}
             className={({ isActive }) =>
               `flex items-center gap-1.5 px-3 py-1.5 rounded text-body transition-colors ${
                 isActive
