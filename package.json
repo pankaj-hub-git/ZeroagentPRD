@@ -1,0 +1,12 @@
+{
+  "name": "zeroagent-prd",
+  "version": "1.0.0",
+  "description": "ZeroAgent PRD - Supabase connection check",
+  "type": "module",
+  "scripts": {
+    "check-connection": "node src/check-connection.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
