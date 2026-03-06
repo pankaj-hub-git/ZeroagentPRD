@@ -94,7 +94,7 @@ export function useFeedData() {
           .order('date', { ascending: false })
           .limit(20),
         sb
-          .from('bronze.government_catalysts')
+          .from('bronze_government_catalysts')
           .select('*')
           .order('date', { ascending: false })
           .limit(30),
