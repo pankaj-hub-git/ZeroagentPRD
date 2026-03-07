@@ -7,6 +7,12 @@ import {
 } from 'recharts';
 
 const GOLD = '#C9A84C';
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtMonth(m: string): string {
+  const [y, mo] = m.split('-');
+  return `${MONTHS_SHORT[Number(mo) - 1] ?? mo} ${y?.slice(2) ?? ''}`;
+}
+
 const BEDROOM_COLORS: Record<string, string> = {
   Studio: '#C9A84C',
   '1 B/R': '#2E75B6',
@@ -72,7 +78,7 @@ export function MarketPage() {
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={monthlyVolume}>
-              <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#8892A4' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tickFormatter={fmtMonth} tick={{ fontSize: 9, fill: '#8892A4' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} width={40} />
               <Tooltip
                 contentStyle={{ background: '#0D0D20', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, fontSize: 11 }}
@@ -94,7 +100,7 @@ export function MarketPage() {
             </div>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={bedroomTrend}>
-                <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#8892A4' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="month" tickFormatter={fmtMonth} tick={{ fontSize: 9, fill: '#8892A4' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} width={50} />
                 <Tooltip
                   contentStyle={{ background: '#0D0D20', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, fontSize: 11 }}

@@ -9,6 +9,11 @@ import { useRef, useCallback } from 'react';
 
 const GOLD = '#C9A84C';
 const CHART_BG = '#0D0D20';
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtMonth(m: string): string {
+  const [y, mo] = m.split('-');
+  return `${MONTHS_SHORT[Number(mo) - 1] ?? mo} ${y?.slice(2) ?? ''}`;
+}
 
 /* ── Helpers ───────────────────────────────────────────────── */
 function relativeTime(iso: string): string {
@@ -202,7 +207,7 @@ export function HomePage() {
                 <div className="text-micro text-text-dim mb-2">Avg PSF Trend (AED/sqft)</div>
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={psfTrend}>
-                    <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="month" tickFormatter={fmtMonth} tick={{ fontSize: 9, fill: '#8892A4' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} width={50} />
                     <Tooltip content={<ChartTooltip />} />
                     <Line type="monotone" dataKey="psf" stroke={GOLD} strokeWidth={2} dot={false} />

@@ -65,13 +65,19 @@ export function useMarketData(): MarketData {
 
   useEffect(() => {
     const run = async () => {
+      // Go back 14 months so charts spread across full date range
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 14);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
       const [txnRes, yieldRes, eiborRes, phaseRes] = await Promise.all([
         sb
           .schema('bronze').from('dld_transactions')
           .select('instance_date, rooms_en, actual_worth, meter_sale_price, reg_type_en, area_name_en')
           .eq('trans_group_en', 'Sales')
+          .gte('instance_date', cutoffStr)
           .order('instance_date', { ascending: false })
-          .limit(10000),
+          .limit(50000),
         sb
           .schema('gold').from('rental_yield')
           .select('area_name, gross_yield')

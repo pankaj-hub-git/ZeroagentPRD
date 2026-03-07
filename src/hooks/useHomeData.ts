@@ -168,14 +168,20 @@ export function useHomeData(): HomeData {
   /* ── Load Market Pulse ──────────────────────────────────── */
   useEffect(() => {
     const run = async () => {
+      // Go back 14 months so charts spread across full date range
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 14);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
       // Single consolidated query for all Market Pulse data
       const [allTxnRes, eiborRes] = await Promise.all([
         sb
           .schema('bronze').from('dld_transactions')
           .select('instance_date, meter_sale_price, rooms_en, reg_type_en, actual_worth, area_name_en')
           .eq('trans_group_en', 'Sales')
+          .gte('instance_date', cutoffStr)
           .order('instance_date', { ascending: false })
-          .limit(8000),
+          .limit(50000),
         sb
           .schema('bronze').from('eibor_rates')
           .select('*')

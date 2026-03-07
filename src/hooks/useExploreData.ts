@@ -211,12 +211,19 @@ export function useExploreData(): ExploreData {
 
     setTabLoading(true);
     const run = async () => {
+      // Build phase query — only add developer filter if developer is selected
+      let phaseQuery = gold().from('phase_registry')
+        .select('phase_name, master_project_en, launch_psm, current_psm, total_return_pct, qoq_momentum, completion_pct, launch_date, latest_txn_date, developer_name, developer_tier')
+        .order('launch_date');
+
+      if (selectedDeveloper) {
+        phaseQuery = phaseQuery.or(`master_project_en.ilike.%${community}%,developer_name.ilike.%${selectedDeveloper}%`);
+      } else {
+        phaseQuery = phaseQuery.ilike('master_project_en', `%${community}%`);
+      }
+
       const [phaseRes, vbRes, scTruthRes, scTrajRes, truthRes, geeRes, devScoreRes] = await Promise.all([
-        // Phase registry
-        gold().from('phase_registry')
-          .select('phase_name, master_project_en, launch_psm, current_psm, total_return_pct, qoq_momentum, completion_pct, launch_date, latest_txn_date, developer_name, developer_tier')
-          .or(`master_project_en.ilike.%${community}%,developer_name.ilike.%${selectedDeveloper ?? ''}%`)
-          .order('launch_date'),
+        phaseQuery,
         // View blocking
         gold().from('view_blocking_v3')
           .select('view_name, view_type, blocker_name, blocker_status, risk_score, safe_above_floor, timeline, pct_of_view_blocked, block_severity')
