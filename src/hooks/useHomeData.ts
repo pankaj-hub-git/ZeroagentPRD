@@ -1,59 +1,23 @@
 import { useEffect, useState, useCallback } from 'react';
-import { sb } from '@/lib/supabase';
+import { sb, gold, silver, bronze } from '@/lib/supabase';
 import { SQM_TO_SQFT } from '@/lib/constants';
 
-/* ── Deal Card ─────────────────────────────────────────────── */
+/* ── Transaction Cards ────────────────────────────────────── */
 export interface DealCard {
   id: string;
-  type: 'sale' | 'rent_new' | 'rent_renew';
-  offPlan: boolean;
-  title: string;    // [master_project] · [rooms]
-  price: number;    // AED
-  psfSqft: number | null; // only sales
-  subLabel: string; // area · sqft
-  time: string;     // instance_date ISO
+  type: 'offplan' | 'ready' | 'rent_new' | 'rent_renew';
+  title: string;
+  price: number;
+  psfSqft: number | null;
+  subLabel: string;
+  time: string;
   rooms: string;
-  regType: string;
-}
-
-/* ── Market Pulse ──────────────────────────────────────────── */
-export interface MtdVolume {
-  count: number;
-  totalValue: number;
-}
-
-export interface PsfTrendPoint {
-  month: string;
-  psf: number;
-  count: number;
-}
-
-export interface BedroomPsf {
-  rooms: string;
-  psf: number;
-}
-
-export interface OffplanSplit {
-  regType: string;
-  count: number;
-  valueBn: number;
-}
-
-export interface TopArea {
   area: string;
-  psf: number;
-  count: number;
+  regType: string;
 }
 
-export interface EiborRate {
-  date: string;
-  rate_1m?: number;
-  rate_3m?: number;
-  rate_6m?: number;
-}
-
-/* ── Gov Feed ──────────────────────────────────────────────── */
-export interface GovFeedItem {
+/* ── News / Feed ──────────────────────────────────────────── */
+export interface FeedItem {
   id: string;
   source: 'government' | 'safe_haven' | 'policy';
   title: string;
@@ -61,101 +25,195 @@ export interface GovFeedItem {
   impactScore: number;
   date: string;
   communities: string[];
-  meta: Record<string, unknown>;
+  direction?: string;
+  type?: string;
 }
 
-/* ── Hook Return ───────────────────────────────────────────── */
-interface HomeData {
-  deals: DealCard[];
+/* ── Market KPIs ──────────────────────────────────────────── */
+export interface MonthlyPoint {
+  month: string;
+  offplan: number;
+  ready: number;
+  total: number;
+  valueBn: number;
+}
+
+export interface AreaHeat {
+  area: string;
+  count: number;
+  avgPsf: number;
+  totalValue: number;
+  yoyPsfPct: number;
+}
+
+export interface YoYComparison {
+  area: string;
+  curYearCount: number;
+  prevYearCount: number;
+  curYearPsf: number;
+  prevYearPsf: number;
+  psfChangePct: number;
+  volumeChangePct: number;
+}
+
+/* ── Capital Rotation ─────────────────────────────────────── */
+export interface CapitalFlow {
+  quarter: string;
+  area: string;
+  txnCount: number;
+  totalValueAed: number;
+  avgPrice: number;
+  qoqPricePct: number;
+  yoyPricePct: number;
+  rotationSignal: string;
+}
+
+/* ── Rental Analysis ──────────────────────────────────────── */
+export interface RentalTrend {
+  area: string;
+  periodStart: string;
+  avgRent: number;
+  totalContracts: number;
+  renewalPct: number;
+}
+
+/* ── Supply Pipeline ──────────────────────────────────────── */
+export interface SupplyItem {
+  phaseName: string;
+  masterProject: string;
+  developer: string;
+  launchDate: string;
+  completionPct: number;
+  isOffplan: boolean;
+  currentPsf: number;
+}
+
+/* ── EIBOR ────────────────────────────────────────────────── */
+export interface EiborRate {
+  date: string;
+  rate_1m?: number;
+  rate_3m?: number;
+  rate_6m?: number;
+}
+
+/* ── Hook Return ──────────────────────────────────────────── */
+export interface HomeData {
+  // Transactions
+  offplanDeals: DealCard[];
+  readyDeals: DealCard[];
+  rentalDeals: DealCard[];
   dealsLoading: boolean;
   loadMoreDeals: () => void;
-  mtd: MtdVolume | null;
-  psfTrend: PsfTrendPoint[];
-  bedroomPsf: BedroomPsf[];
-  offplanSplit: OffplanSplit[];
-  topAreas: TopArea[];
+
+  // News
+  feed: FeedItem[];
+  feedLoading: boolean;
+
+  // Sales dashboard
+  monthlyVolume: MonthlyPoint[];
+  areaHeat: AreaHeat[];
+  yoy: YoYComparison[];
+  offplanSplit: { label: string; count: number; valueBn: number }[];
+
+  // Capital rotation
+  capitalFlow: CapitalFlow[];
+
+  // Rentals
+  rentalTrends: RentalTrend[];
+
+  // Supply
+  supplyPipeline: SupplyItem[];
+
+  // EIBOR
   eibor: EiborRate[];
-  pulseLoading: boolean;
-  govFeed: GovFeedItem[];
-  govLoading: boolean;
+
+  // Loading
+  dashLoading: boolean;
 }
 
 export function useHomeData(): HomeData {
-  /* Deals */
-  const [deals, setDeals] = useState<DealCard[]>([]);
+  /* Transactions */
+  const [offplanDeals, setOffplanDeals] = useState<DealCard[]>([]);
+  const [readyDeals, setReadyDeals] = useState<DealCard[]>([]);
+  const [rentalDeals, setRentalDeals] = useState<DealCard[]>([]);
   const [dealsLoading, setDealsLoading] = useState(true);
   const [dealPage, setDealPage] = useState(0);
 
-  /* Market Pulse */
-  const [mtd, setMtd] = useState<MtdVolume | null>(null);
-  const [psfTrend, setPsfTrend] = useState<PsfTrendPoint[]>([]);
-  const [bedroomPsf, setBedroomPsf] = useState<BedroomPsf[]>([]);
-  const [offplanSplit, setOffplanSplit] = useState<OffplanSplit[]>([]);
-  const [topAreas, setTopAreas] = useState<TopArea[]>([]);
+  /* News */
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+
+  /* Dashboard */
+  const [monthlyVolume, setMonthlyVolume] = useState<MonthlyPoint[]>([]);
+  const [areaHeat, setAreaHeat] = useState<AreaHeat[]>([]);
+  const [yoy, setYoy] = useState<YoYComparison[]>([]);
+  const [offplanSplit, setOffplanSplit] = useState<{ label: string; count: number; valueBn: number }[]>([]);
+  const [capitalFlow, setCapitalFlow] = useState<CapitalFlow[]>([]);
+  const [rentalTrends, setRentalTrends] = useState<RentalTrend[]>([]);
+  const [supplyPipeline, setSupplyPipeline] = useState<SupplyItem[]>([]);
   const [eibor, setEibor] = useState<EiborRate[]>([]);
-  const [pulseLoading, setPulseLoading] = useState(true);
+  const [dashLoading, setDashLoading] = useState(true);
 
-  /* Gov Feed */
-  const [govFeed, setGovFeed] = useState<GovFeedItem[]>([]);
-  const [govLoading, setGovLoading] = useState(true);
-
-  /* ── Load Deals ─────────────────────────────────────────── */
+  /* ── Fetch Transactions ─────────────────────────────────── */
   const fetchDeals = useCallback(async (page: number) => {
     setDealsLoading(true);
-    const offset = page * 40;
+    const offset = page * 30;
     const [salesRes, rentRes] = await Promise.all([
-      sb
-        .schema('bronze').from('dld_transactions')
-        .select('instance_date, rooms_en, actual_worth, meter_sale_price, procedure_area, project_name_en, master_project_en, building_name_en, area_name_en, reg_type_en, transaction_id')
+      bronze().from('dld_transactions')
+        .select('instance_date, rooms_en, actual_worth, meter_sale_price, procedure_area, project_name_en, master_project_en, area_name_en, reg_type_en')
         .eq('trans_group_en', 'Sales')
         .order('instance_date', { ascending: false })
-        .range(offset, offset + 39),
-      sb
-        .schema('bronze').from('rent_contracts_clean')
-        .select('contract_start_date, ejari_property_sub_type_en, annual_amount, contract_reg_type_en, project_name_en, area_name_en, ejari_bus_property_type_en, contract_id')
+        .range(offset, offset + 59),
+      bronze().from('rent_contracts_clean')
+        .select('contract_start_date, ejari_property_sub_type_en, annual_amount, contract_reg_type_en, project_name_en, area_name_en')
         .order('contract_start_date', { ascending: false })
-        .range(offset, offset + 39),
+        .range(offset, offset + 29),
     ]);
 
-    const saleDealCards: DealCard[] = (salesRes.data ?? []).map((r: Record<string, unknown>, i: number) => {
+    const sales: DealCard[] = (salesRes.data ?? []).map((r: Record<string, unknown>, i: number) => {
       const msp = (r.meter_sale_price as number) ?? 0;
       const area = (r.procedure_area as number) ?? 0;
       const regType = (r.reg_type_en as string) ?? '';
+      const isOffplan = regType.toLowerCase().includes('off-plan');
       return {
-        id: `sale-${page}-${i}`,
-        type: 'sale' as const,
-        offPlan: regType.toLowerCase().includes('off-plan'),
-        title: `${(r.master_project_en as string) ?? (r.project_name_en as string) ?? 'Unknown'} · ${(r.rooms_en as string) ?? ''}`.slice(0, 32),
+        id: `s-${page}-${i}`,
+        type: isOffplan ? 'offplan' as const : 'ready' as const,
+        title: `${(r.master_project_en as string) ?? (r.project_name_en as string) ?? ''} · ${(r.rooms_en as string) ?? ''}`.slice(0, 40),
         price: (r.actual_worth as number) ?? 0,
         psfSqft: msp > 0 ? Math.round(msp / SQM_TO_SQFT) : null,
         subLabel: `${(r.area_name_en as string) ?? ''} · ${Math.round(area * SQM_TO_SQFT)} sqft`,
         time: (r.instance_date as string) ?? '',
         rooms: (r.rooms_en as string) ?? '',
+        area: (r.area_name_en as string) ?? '',
         regType,
       };
     });
 
-    const rentDealCards: DealCard[] = (rentRes.data ?? []).map((r: Record<string, unknown>, i: number) => {
-      const contractType = ((r.contract_reg_type_en as string) ?? '').toLowerCase();
+    const rents: DealCard[] = (rentRes.data ?? []).map((r: Record<string, unknown>, i: number) => {
+      const ct = ((r.contract_reg_type_en as string) ?? '').toLowerCase();
       return {
-        id: `rent-${page}-${i}`,
-        type: contractType.includes('renew') ? 'rent_renew' as const : 'rent_new' as const,
-        offPlan: false,
-        title: `${(r.project_name_en as string) ?? 'Unknown'} · ${(r.ejari_property_sub_type_en as string) ?? ''}`.slice(0, 32),
+        id: `r-${page}-${i}`,
+        type: ct.includes('renew') ? 'rent_renew' as const : 'rent_new' as const,
+        title: `${(r.project_name_en as string) ?? ''} · ${(r.ejari_property_sub_type_en as string) ?? ''}`.slice(0, 40),
         price: (r.annual_amount as number) ?? 0,
         psfSqft: null,
-        subLabel: `${(r.area_name_en as string) ?? ''}`,
+        subLabel: (r.area_name_en as string) ?? '',
         time: (r.contract_start_date as string) ?? '',
         rooms: (r.ejari_property_sub_type_en as string) ?? '',
+        area: (r.area_name_en as string) ?? '',
         regType: (r.contract_reg_type_en as string) ?? '',
       };
     });
 
-    const merged = [...saleDealCards, ...rentDealCards].sort(
-      (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
-    );
-
-    setDeals((prev) => (page === 0 ? merged : [...prev, ...merged]));
+    if (page === 0) {
+      setOffplanDeals(sales.filter((d) => d.type === 'offplan'));
+      setReadyDeals(sales.filter((d) => d.type === 'ready'));
+      setRentalDeals(rents);
+    } else {
+      setOffplanDeals((p) => [...p, ...sales.filter((d) => d.type === 'offplan')]);
+      setReadyDeals((p) => [...p, ...sales.filter((d) => d.type === 'ready')]);
+      setRentalDeals((p) => [...p, ...rents]);
+    }
     setDealsLoading(false);
   }, []);
 
@@ -165,226 +223,206 @@ export function useHomeData(): HomeData {
     fetchDeals(next);
   }, [dealPage, fetchDeals]);
 
-  /* ── Load Market Pulse ──────────────────────────────────── */
-  useEffect(() => {
-    const run = async () => {
-      // Go back 14 months so charts spread across full date range
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - 14);
-      const cutoffStr = cutoff.toISOString().slice(0, 10);
-
-      // Single consolidated query for all Market Pulse data
-      const [allTxnRes, eiborRes] = await Promise.all([
-        sb
-          .schema('bronze').from('dld_transactions')
-          .select('instance_date, meter_sale_price, rooms_en, reg_type_en, actual_worth, area_name_en')
-          .eq('trans_group_en', 'Sales')
-          .gte('instance_date', cutoffStr)
-          .order('instance_date', { ascending: false })
-          .limit(50000),
-        sb
-          .schema('bronze').from('eibor_rates')
-          .select('*')
-          .order('date', { ascending: false })
-          .limit(2),
-      ]);
-
-      const allTxns = (allTxnRes.data ?? []) as Record<string, unknown>[];
-
-      // MTD — compute client-side
-      const now = new Date();
-      const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      let mtdCount = 0;
-      let mtdVal = 0;
-      allTxns.forEach((r) => {
-        const d = new Date(r.instance_date as string);
-        const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        if (m === curMonth) {
-          mtdCount++;
-          mtdVal += (r.actual_worth as number) ?? 0;
-        }
-      });
-      setMtd({ count: mtdCount, totalValue: mtdVal });
-
-      // Alias results for downstream processing
-      const trendRes = allTxnRes;
-      const brRes = { data: allTxns.filter((r) => (r.meter_sale_price as number) > 0 && ['Studio', '1 B/R', '2 B/R', '3 B/R'].includes(r.rooms_en as string)) };
-      const opRes = allTxnRes;
-      const areaRes = { data: allTxns.filter((r) => (r.meter_sale_price as number) > 0 && r.area_name_en) };
-
-      // PSF Trend — aggregate client-side by month
-      if (trendRes.data) {
-        const byMonth: Record<string, { sum: number; count: number }> = {};
-        (trendRes.data as Record<string, unknown>[]).forEach((r) => {
-          const d = new Date(r.instance_date as string);
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          if (!byMonth[key]) byMonth[key] = { sum: 0, count: 0 };
-          byMonth[key].sum += (r.meter_sale_price as number) / SQM_TO_SQFT;
-          byMonth[key].count++;
-        });
-        const sorted = Object.entries(byMonth)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .slice(-14)
-          .map(([month, v]) => ({
-            month,
-            psf: Math.round(v.sum / v.count),
-            count: v.count,
-          }));
-        setPsfTrend(sorted);
-      }
-
-      // Bedroom PSF — aggregate client-side
-      if (brRes.data) {
-        const byRoom: Record<string, { sum: number; count: number }> = {};
-        (brRes.data as Record<string, unknown>[]).forEach((r) => {
-          const room = r.rooms_en as string;
-          if (!byRoom[room]) byRoom[room] = { sum: 0, count: 0 };
-          byRoom[room].sum += (r.meter_sale_price as number) / SQM_TO_SQFT;
-          byRoom[room].count++;
-        });
-        setBedroomPsf(
-          Object.entries(byRoom).map(([rooms, v]) => ({
-            rooms,
-            psf: Math.round(v.sum / v.count),
-          }))
-        );
-      }
-
-      // Offplan Split — aggregate client-side
-      if (opRes.data) {
-        const byType: Record<string, { count: number; sum: number }> = {};
-        (opRes.data as Record<string, unknown>[]).forEach((r) => {
-          const rt = (r.reg_type_en as string) ?? 'Unknown';
-          if (!byType[rt]) byType[rt] = { count: 0, sum: 0 };
-          byType[rt].count++;
-          byType[rt].sum += (r.actual_worth as number) ?? 0;
-        });
-        setOffplanSplit(
-          Object.entries(byType).map(([regType, v]) => ({
-            regType,
-            count: v.count,
-            valueBn: Number((v.sum / 1e9).toFixed(2)),
-          }))
-        );
-      }
-
-      // Top Areas — aggregate client-side
-      if (areaRes.data) {
-        const byArea: Record<string, { sum: number; count: number }> = {};
-        (areaRes.data as Record<string, unknown>[]).forEach((r) => {
-          const area = (r.area_name_en as string) ?? '';
-          if (!area) return;
-          if (!byArea[area]) byArea[area] = { sum: 0, count: 0 };
-          byArea[area].sum += (r.meter_sale_price as number) / SQM_TO_SQFT;
-          byArea[area].count++;
-        });
-        const sorted = Object.entries(byArea)
-          .sort(([, a], [, b]) => b.count - a.count)
-          .slice(0, 5)
-          .map(([area, v]) => ({
-            area,
-            psf: Math.round(v.sum / v.count),
-            count: v.count,
-          }));
-        setTopAreas(sorted);
-      }
-
-      // EIBOR
-      if (eiborRes.data) {
-        setEibor(eiborRes.data as EiborRate[]);
-      }
-
-      setPulseLoading(false);
-    };
-    run();
-  }, []);
-
-  /* ── Load Gov Feed ──────────────────────────────────────── */
+  /* ── Fetch News Feed ────────────────────────────────────── */
   useEffect(() => {
     const run = async () => {
       const [govRes, shRes, polRes] = await Promise.all([
-        sb
-          .from('bronze_government_catalysts')
+        sb.from('bronze_government_catalysts')
           .select('catalyst_name, catalyst_type, current_status, announced_date, base_impact_score, description, affected_communities')
-          .order('announced_date', { ascending: false })
-          .limit(20),
-        sb
-          .schema('bronze').from('safe_haven_catalysts')
+          .order('announced_date', { ascending: false }).limit(20),
+        bronze().from('safe_haven_catalysts')
           .select('event_name, event_type, origin_country, severity, capital_flow_direction, description, event_date')
-          .order('event_date', { ascending: false })
-          .limit(10),
-        sb
-          .schema('bronze').from('policy_events')
+          .order('event_date', { ascending: false }).limit(10),
+        bronze().from('policy_events')
           .select('event_name, policy_type, direction, description, estimated_impact_pct, affected_communities, event_date')
-          .order('event_date', { ascending: false })
-          .limit(10),
+          .order('event_date', { ascending: false }).limit(10),
       ]);
 
-      const items: GovFeedItem[] = [];
-
+      const items: FeedItem[] = [];
       (govRes.data ?? []).forEach((r: Record<string, unknown>, i: number) => {
-        items.push({
-          id: `gov-${i}`,
-          source: 'government',
-          title: (r.catalyst_name as string) ?? 'Government Catalyst',
-          description: (r.description as string) ?? '',
-          impactScore: (r.base_impact_score as number) ?? 0,
-          date: (r.announced_date as string) ?? '',
-          communities: Array.isArray(r.affected_communities) ? (r.affected_communities as string[]) : [],
-          meta: { type: r.catalyst_type, status: r.current_status },
-        });
+        items.push({ id: `g-${i}`, source: 'government', title: (r.catalyst_name as string) ?? '', description: (r.description as string) ?? '',
+          impactScore: (r.base_impact_score as number) ?? 0, date: (r.announced_date as string) ?? '',
+          communities: Array.isArray(r.affected_communities) ? r.affected_communities as string[] : [], type: (r.catalyst_type as string) ?? '' });
       });
-
       (shRes.data ?? []).forEach((r: Record<string, unknown>, i: number) => {
-        items.push({
-          id: `sh-${i}`,
-          source: 'safe_haven',
-          title: (r.event_name as string) ?? 'Safe Haven Signal',
-          description: (r.description as string) ?? '',
-          impactScore: (r.severity as number) ?? 0,
-          date: (r.event_date as string) ?? '',
-          communities: [],
-          meta: { type: r.event_type, origin: r.origin_country, flow: r.capital_flow_direction },
-        });
+        items.push({ id: `sh-${i}`, source: 'safe_haven', title: (r.event_name as string) ?? '', description: (r.description as string) ?? '',
+          impactScore: (r.severity as number) ?? 0, date: (r.event_date as string) ?? '', communities: [],
+          direction: (r.capital_flow_direction as string) ?? '', type: (r.event_type as string) ?? '' });
       });
-
       (polRes.data ?? []).forEach((r: Record<string, unknown>, i: number) => {
-        items.push({
-          id: `pol-${i}`,
-          source: 'policy',
-          title: (r.event_name as string) ?? 'Policy Event',
-          description: (r.description as string) ?? '',
-          impactScore: 0,
-          date: (r.event_date as string) ?? '',
-          communities: Array.isArray(r.affected_communities) ? (r.affected_communities as string[]) : [],
-          meta: { type: r.policy_type, direction: r.direction, impact: r.estimated_impact_pct },
-        });
+        items.push({ id: `p-${i}`, source: 'policy', title: (r.event_name as string) ?? '', description: (r.description as string) ?? '',
+          impactScore: (r.estimated_impact_pct as number) ?? 0, date: (r.event_date as string) ?? '',
+          communities: Array.isArray(r.affected_communities) ? r.affected_communities as string[] : [],
+          direction: (r.direction as string) ?? '', type: (r.policy_type as string) ?? '' });
       });
-
       items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setGovFeed(items);
-      setGovLoading(false);
+      setFeed(items);
+      setFeedLoading(false);
     };
     run();
   }, []);
 
-  /* ── Initial deal fetch ─────────────────────────────────── */
+  /* ── Fetch Dashboard Data ───────────────────────────────── */
   useEffect(() => {
-    fetchDeals(0);
-  }, [fetchDeals]);
+    const run = async () => {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 24);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+      const [txnRes, eiborRes, capRes, rentTsRes, supplyRes] = await Promise.all([
+        bronze().from('dld_transactions')
+          .select('instance_date, meter_sale_price, actual_worth, reg_type_en, area_name_en')
+          .eq('trans_group_en', 'Sales')
+          .gte('instance_date', cutoffStr)
+          .order('instance_date', { ascending: false })
+          .limit(80000),
+        bronze().from('eibor_rates')
+          .select('*').order('date', { ascending: false }).limit(12),
+        gold().from('capital_rotation_quarterly')
+          .select('quarter, area_name_en, txn_count, total_value_aed, avg_price, qoq_price_pct, yoy_price_pct, rotation_signal')
+          .order('total_value_aed', { ascending: false }).limit(200),
+        silver().from('rent_timeseries')
+          .select('area_name, period_start, avg_annual_rent, total_contracts, renewal_pct')
+          .eq('period_type', 'quarterly')
+          .order('period_start', { ascending: false }).limit(200),
+        gold().from('phase_registry')
+          .select('phase_name, master_project_en, developer_name, launch_date, completion_pct, current_psm')
+          .lt('completion_pct', 100)
+          .order('launch_date', { ascending: false }).limit(50),
+      ]);
+
+      const txns = (txnRes.data ?? []) as Record<string, unknown>[];
+      const now = new Date();
+      const curYear = now.getFullYear();
+      const prevYear = curYear - 1;
+
+      // ── Monthly Volume (offplan vs ready)
+      const byMonth: Record<string, { offplan: number; ready: number; total: number; val: number }> = {};
+      txns.forEach((r) => {
+        const d = new Date(r.instance_date as string);
+        const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (!byMonth[m]) byMonth[m] = { offplan: 0, ready: 0, total: 0, val: 0 };
+        const isOp = ((r.reg_type_en as string) ?? '').toLowerCase().includes('off-plan');
+        if (isOp) byMonth[m].offplan++; else byMonth[m].ready++;
+        byMonth[m].total++;
+        byMonth[m].val += (r.actual_worth as number) ?? 0;
+      });
+      setMonthlyVolume(
+        Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).slice(-14)
+          .map(([month, v]) => ({ month, offplan: v.offplan, ready: v.ready, total: v.total, valueBn: Number((v.val / 1e9).toFixed(2)) }))
+      );
+
+      // ── Offplan vs Ready split
+      let opCount = 0, opVal = 0, rdCount = 0, rdVal = 0;
+      txns.forEach((r) => {
+        const isOp = ((r.reg_type_en as string) ?? '').toLowerCase().includes('off-plan');
+        const w = (r.actual_worth as number) ?? 0;
+        if (isOp) { opCount++; opVal += w; } else { rdCount++; rdVal += w; }
+      });
+      setOffplanSplit([
+        { label: 'Off-Plan', count: opCount, valueBn: Number((opVal / 1e9).toFixed(2)) },
+        { label: 'Ready / Secondary', count: rdCount, valueBn: Number((rdVal / 1e9).toFixed(2)) },
+      ]);
+
+      // ── Area heatmap + YoY
+      const byAreaYear: Record<string, Record<number, { count: number; psfSum: number; psfCnt: number; valSum: number }>> = {};
+      txns.forEach((r) => {
+        const area = (r.area_name_en as string) ?? '';
+        const msp = (r.meter_sale_price as number) ?? 0;
+        const yr = new Date(r.instance_date as string).getFullYear();
+        if (!area) return;
+        if (!byAreaYear[area]) byAreaYear[area] = {};
+        if (!byAreaYear[area][yr]) byAreaYear[area][yr] = { count: 0, psfSum: 0, psfCnt: 0, valSum: 0 };
+        byAreaYear[area][yr].count++;
+        byAreaYear[area][yr].valSum += (r.actual_worth as number) ?? 0;
+        if (msp > 0) { byAreaYear[area][yr].psfSum += msp / SQM_TO_SQFT; byAreaYear[area][yr].psfCnt++; }
+      });
+
+      const heatArr: AreaHeat[] = [];
+      const yoyArr: YoYComparison[] = [];
+      for (const [area, years] of Object.entries(byAreaYear)) {
+        const cur = years[curYear]; const prev = years[prevYear];
+        const totalCount = Object.values(years).reduce((s, y) => s + y.count, 0);
+        const totalPsfSum = Object.values(years).reduce((s, y) => s + y.psfSum, 0);
+        const totalPsfCnt = Object.values(years).reduce((s, y) => s + y.psfCnt, 0);
+        const totalVal = Object.values(years).reduce((s, y) => s + y.valSum, 0);
+        const avgPsf = totalPsfCnt > 0 ? Math.round(totalPsfSum / totalPsfCnt) : 0;
+        const curPsf = cur?.psfCnt ? Math.round(cur.psfSum / cur.psfCnt) : 0;
+        const prevPsf = prev?.psfCnt ? Math.round(prev.psfSum / prev.psfCnt) : 0;
+        const yoyPsfPct = prevPsf > 0 ? Number(((curPsf - prevPsf) / prevPsf * 100).toFixed(1)) : 0;
+        heatArr.push({ area, count: totalCount, avgPsf, totalValue: totalVal, yoyPsfPct });
+        if (cur && prev) {
+          yoyArr.push({
+            area, curYearCount: cur.count, prevYearCount: prev.count,
+            curYearPsf: curPsf, prevYearPsf: prevPsf,
+            psfChangePct: yoyPsfPct,
+            volumeChangePct: Number(((cur.count - prev.count) / prev.count * 100).toFixed(1)),
+          });
+        }
+      }
+      setAreaHeat(heatArr.sort((a, b) => b.count - a.count).slice(0, 20));
+      setYoy(yoyArr.sort((a, b) => Math.abs(b.psfChangePct) - Math.abs(a.psfChangePct)).slice(0, 15));
+
+      // ── EIBOR
+      if (eiborRes.data) setEibor(eiborRes.data as EiborRate[]);
+
+      // ── Capital Rotation
+      if (capRes.data) {
+        setCapitalFlow(
+          (capRes.data as Record<string, unknown>[]).map((r) => ({
+            quarter: (r.quarter as string) ?? '',
+            area: (r.area_name_en as string) ?? '',
+            txnCount: (r.txn_count as number) ?? 0,
+            totalValueAed: (r.total_value_aed as number) ?? 0,
+            avgPrice: (r.avg_price as number) ?? 0,
+            qoqPricePct: (r.qoq_price_pct as number) ?? 0,
+            yoyPricePct: (r.yoy_price_pct as number) ?? 0,
+            rotationSignal: (r.rotation_signal as string) ?? '',
+          }))
+        );
+      }
+
+      // ── Rental trends (where renewals declining/increasing)
+      if (rentTsRes.data) {
+        setRentalTrends(
+          (rentTsRes.data as Record<string, unknown>[]).map((r) => ({
+            area: (r.area_name as string) ?? '',
+            periodStart: (r.period_start as string) ?? '',
+            avgRent: (r.avg_annual_rent as number) ?? 0,
+            totalContracts: (r.total_contracts as number) ?? 0,
+            renewalPct: (r.renewal_pct as number) ?? 0,
+          }))
+        );
+      }
+
+      // ── Supply pipeline (off-plan phases not yet complete)
+      if (supplyRes.data) {
+        setSupplyPipeline(
+          (supplyRes.data as Record<string, unknown>[]).map((r) => ({
+            phaseName: (r.phase_name as string) ?? '',
+            masterProject: (r.master_project_en as string) ?? '',
+            developer: (r.developer_name as string) ?? '',
+            launchDate: (r.launch_date as string) ?? '',
+            completionPct: (r.completion_pct as number) ?? 0,
+            isOffplan: true,
+            currentPsf: Math.round(((r.current_psm as number) ?? 0) / SQM_TO_SQFT),
+          }))
+        );
+      }
+
+      setDashLoading(false);
+    };
+    run();
+  }, []);
+
+  /* Initial deal fetch */
+  useEffect(() => { fetchDeals(0); }, [fetchDeals]);
 
   return {
-    deals,
-    dealsLoading,
-    loadMoreDeals,
-    mtd,
-    psfTrend,
-    bedroomPsf,
-    offplanSplit,
-    topAreas,
-    eibor,
-    pulseLoading,
-    govFeed,
-    govLoading,
+    offplanDeals, readyDeals, rentalDeals, dealsLoading, loadMoreDeals,
+    feed, feedLoading,
+    monthlyVolume, areaHeat, yoy, offplanSplit,
+    capitalFlow, rentalTrends, supplyPipeline, eibor,
+    dashLoading,
   };
 }
