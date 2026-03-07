@@ -453,13 +453,32 @@ function RentalsTab({
 
 /* ── Tab: Capital Flow ──────────────────────────────────────── */
 function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; loading: boolean }) {
+  const [selectedQ, setSelectedQ] = useState<string>('');
+
   if (loading) return <Spinner />;
   if (capitalFlow.length === 0) return <p className="text-body text-text-dim">No capital rotation data available</p>;
 
-  // Group by quarter
+  // Available quarters sorted descending
   const quarters = [...new Set(capitalFlow.map((c) => c.quarter))].sort().reverse();
-  const latestQ = quarters[0];
-  const latestData = capitalFlow.filter((c) => c.quarter === latestQ).sort((a, b) => b.totalValueAed - a.totalValueAed);
+  const activeQ = selectedQ || quarters[0] || '';
+
+  // Filter to selected quarter, only high-volume areas (>=10 txns), sorted by total value
+  const qData = capitalFlow
+    .filter((c) => c.quarter === activeQ && c.txnCount >= 10)
+    .sort((a, b) => b.totalValueAed - a.totalValueAed);
+
+  // Cross-quarter trend: aggregate total txns & value per area across all quarters
+  const areaAgg: Record<string, { txns: number; value: number; latestSignal: string; latestQ: string }> = {};
+  capitalFlow.filter((c) => c.txnCount >= 10).forEach((c) => {
+    if (!areaAgg[c.area]) areaAgg[c.area] = { txns: 0, value: 0, latestSignal: '', latestQ: '' };
+    areaAgg[c.area].txns += c.txnCount;
+    areaAgg[c.area].value += c.totalValueAed;
+    if (!areaAgg[c.area].latestQ || c.quarter > areaAgg[c.area].latestQ) {
+      areaAgg[c.area].latestSignal = c.rotationSignal;
+      areaAgg[c.area].latestQ = c.quarter;
+    }
+  });
+  const topAreas = Object.entries(areaAgg).sort(([, a], [, b]) => b.value - a.value).slice(0, 20);
 
   const SIGNAL_COLOR: Record<string, string> = {
     inflow: GREEN,
@@ -470,14 +489,44 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
 
   return (
     <div className="space-y-4">
-      <div className="text-label text-text-dim">Capital Rotation — {latestQ || 'Latest Quarter'}</div>
+      {/* Quarter selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-label text-text-dim">Capital Rotation</span>
+        <div className="flex gap-1 flex-wrap">
+          {quarters.map((q) => (
+            <button key={q} onClick={() => setSelectedQ(q)}
+              className={`px-2.5 py-1 text-micro rounded-md transition-colors ${
+                activeQ === q ? 'bg-gold/15 text-gold font-medium' : 'text-text-dim hover:text-text-secondary'
+              }`}>
+              {q}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Top chart: value bars */}
-      {latestData.length > 0 && (
+      {/* Summary: total areas with high volume */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-surface border border-border rounded-lg p-3">
+          <div className="text-[9px] text-text-dim uppercase tracking-wider mb-1">Areas (≥10 txns)</div>
+          <div className="text-heading font-mono text-text-primary">{qData.length}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-lg p-3">
+          <div className="text-[9px] text-text-dim uppercase tracking-wider mb-1">Total Txns</div>
+          <div className="text-heading font-mono text-text-primary">{fmtNum(qData.reduce((s, c) => s + c.txnCount, 0))}</div>
+        </div>
+        <div className="bg-surface border border-border rounded-lg p-3">
+          <div className="text-[9px] text-text-dim uppercase tracking-wider mb-1">Total Value</div>
+          <div className="text-heading font-mono text-gold">AED {(qData.reduce((s, c) => s + c.totalValueAed, 0) / 1e9).toFixed(1)}B</div>
+        </div>
+      </div>
+
+      {/* Top chart: value bars for selected quarter */}
+      {qData.length > 0 && (
         <div className="bg-surface border border-border rounded-lg p-4">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={latestData.slice(0, 15)}>
-              <XAxis dataKey="area" tick={{ fontSize: 8, fill: '#8892A4' }} axisLine={false} tickLine={false} interval={0} angle={-25} textAnchor="end" height={50} />
+          <div className="text-label text-text-dim mb-2">{activeQ} — Value by Area</div>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={qData.slice(0, 15)}>
+              <XAxis dataKey="area" tick={{ fontSize: 8, fill: '#8892A4' }} axisLine={false} tickLine={false} interval={0} angle={-25} textAnchor="end" height={55} />
               <YAxis tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} width={55}
                 tickFormatter={(v: number) => `${(v / 1e9).toFixed(1)}B`} />
               <Tooltip contentStyle={{ backgroundColor: '#1A1A2E', border: '1px solid #2A2A40', fontSize: 11 }}
@@ -488,8 +537,9 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
         </div>
       )}
 
-      {/* Table */}
+      {/* Quarterly detail table */}
       <div className="bg-surface border border-border rounded-lg p-4 overflow-x-auto">
+        <div className="text-label text-text-dim mb-3">{activeQ} — High-Volume Capital Flows</div>
         <table className="w-full text-micro">
           <thead>
             <tr className="text-left text-[9px] text-text-dim uppercase tracking-wider">
@@ -503,7 +553,7 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
             </tr>
           </thead>
           <tbody>
-            {latestData.map((c) => (
+            {qData.map((c) => (
               <tr key={c.area} className="border-t border-border/50">
                 <td className="py-1.5 pr-3 text-text-primary truncate max-w-[120px]">{c.area}</td>
                 <td className="py-1.5 pr-3 text-right font-mono">{fmtNum(c.txnCount)}</td>
@@ -520,9 +570,47 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                 </td>
               </tr>
             ))}
+            {qData.length === 0 && (
+              <tr><td colSpan={7} className="py-4 text-center text-text-dim">No high-volume areas in this quarter</td></tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Cross-quarter cumulative leaders */}
+      {topAreas.length > 0 && (
+        <div className="bg-surface border border-border rounded-lg p-4 overflow-x-auto">
+          <div className="text-label text-text-dim mb-3">All-Time Capital Leaders (cumulative across quarters)</div>
+          <table className="w-full text-micro">
+            <thead>
+              <tr className="text-left text-[9px] text-text-dim uppercase tracking-wider">
+                <th className="pb-2 pr-3">#</th>
+                <th className="pb-2 pr-3">Area</th>
+                <th className="pb-2 pr-3 text-right">Total Txns</th>
+                <th className="pb-2 pr-3 text-right">Total Value</th>
+                <th className="pb-2">Latest Signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topAreas.map(([area, agg], i) => (
+                <tr key={area} className="border-t border-border/50">
+                  <td className="py-1.5 pr-3 text-text-dim font-mono">{i + 1}</td>
+                  <td className="py-1.5 pr-3 text-text-primary truncate max-w-[140px]">{area}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono">{fmtNum(agg.txns)}</td>
+                  <td className="py-1.5 pr-3 text-right font-mono text-gold">AED {(agg.value / 1e9).toFixed(2)}B</td>
+                  <td className="py-1.5">
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+                      style={{ color: SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? '#8892A4',
+                        backgroundColor: `${SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? '#8892A4'}18` }}>
+                      {agg.latestSignal || '—'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

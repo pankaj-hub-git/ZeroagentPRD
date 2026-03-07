@@ -280,7 +280,8 @@ export function useHomeData(): HomeData {
           .select('*').order('date', { ascending: false }).limit(12),
         gold().from('capital_rotation_quarterly')
           .select('quarter, area_name_en, txn_count, total_value_aed, avg_price, qoq_price_pct, yoy_price_pct, rotation_signal')
-          .order('total_value_aed', { ascending: false }).limit(200),
+          .gte('txn_count', 10)
+          .order('total_value_aed', { ascending: false }).limit(500),
         silver().from('rent_timeseries')
           .select('area_name, period_start, avg_annual_rent, total_contracts, renewal_pct')
           .eq('period_type', 'quarterly')
