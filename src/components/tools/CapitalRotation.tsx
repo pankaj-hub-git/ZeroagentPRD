@@ -26,7 +26,7 @@ export function CapitalRotation() {
   useEffect(() => {
     const run = async () => {
       const { data: rows } = await sb
-        .from('gold.capital_rotation')
+        .schema('gold').from('capital_rotation')
         .select('community, rotation_tier, cascade_position, current_score, qoq_delta, typical_lag_quarters')
         .order('cascade_position', { ascending: true });
 

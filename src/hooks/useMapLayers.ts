@@ -32,7 +32,7 @@ export function useDLDVerifiedLayer() {
   useEffect(() => {
     const run = async () => {
       const { data } = await sb
-        .from('bronze.derived_project_registry')
+        .schema('bronze').from('derived_project_registry')
         .select(
           'project_name, community, area_name, avg_psf, transaction_count, latest_txn_date, latitude, longitude'
         )
@@ -68,7 +68,7 @@ export function useCapitalMatrixLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.capital_flow_summary')
+        .schema('gold').from('capital_flow_summary')
         .select(
           'area_name, capital_quality_score, net_inflow_direction, rotation_origin, buyer_nationality_spread, qoq_trajectory'
         )
@@ -100,7 +100,7 @@ export function useDeveloperTruthLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('bronze.masterplan_gee_queue')
+        .schema('bronze').from('masterplan_gee_queue')
         .select(
           'plot_number, community_name, amenity_class, delivery_verdict, delivery_score, gee_composite_end, gee_bbox_west, gee_bbox_south, gee_bbox_east, gee_bbox_north'
         )
@@ -143,7 +143,7 @@ export function useLivabilityLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.livability_index')
+        .schema('gold').from('livability_index')
         .select(
           'building_id, area_name, livability_score, noise_score, green_score, school_score, traffic_score'
         )
@@ -177,7 +177,7 @@ export function useBlockingLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.view_blocking_v3')
+        .schema('gold').from('view_blocking_v3')
         .select(
           'observer_name, view_name, blocker_name, risk_score, safe_above_floor, timeline, blocker_status, pct_of_view_blocked'
         )
@@ -212,7 +212,7 @@ export function usePhaseIntelLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.phase_registry')
+        .schema('gold').from('phase_registry')
         .select(
           'phase_name, community, developer, status, completion_pct, units_total, units_delivered'
         );
@@ -245,7 +245,7 @@ export function useMacroExposureLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.nationality_momentum')
+        .schema('gold').from('nationality_momentum')
         .select(
           'area_name, nationality, momentum_score, qoq_change, buyer_concentration_pct'
         )
@@ -277,7 +277,7 @@ export function useServiceChargesLayer(enabled: boolean) {
     if (!enabled) return;
     const run = async () => {
       const { data } = await sb
-        .from('gold.sc_truth_layer')
+        .schema('gold').from('sc_truth_layer')
         .select('phase_name, mollak_sc, reported_sc, best_sc, sc_status')
         .not('best_sc', 'is', null);
 

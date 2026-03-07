@@ -105,13 +105,13 @@ export function useHomeData(): HomeData {
     const offset = page * 40;
     const [salesRes, rentRes] = await Promise.all([
       sb
-        .from('bronze.dld_transactions')
+        .schema('bronze').from('dld_transactions')
         .select('instance_date, rooms_en, actual_worth, meter_sale_price, procedure_area, project_name_en, master_project_en, building_name_en, area_name_en, reg_type_en, transaction_id')
         .eq('trans_group_en', 'Sales')
         .order('instance_date', { ascending: false })
         .range(offset, offset + 39),
       sb
-        .from('bronze.rent_contracts_clean')
+        .schema('bronze').from('rent_contracts_clean')
         .select('contract_start_date, ejari_property_sub_type_en, annual_amount, contract_reg_type_en, project_name_en, area_name_en, ejari_bus_property_type_en, contract_id')
         .order('contract_start_date', { ascending: false })
         .range(offset, offset + 39),
@@ -168,50 +168,43 @@ export function useHomeData(): HomeData {
   /* ── Load Market Pulse ──────────────────────────────────── */
   useEffect(() => {
     const run = async () => {
-      const [mtdRes, trendRes, brRes, opRes, areaRes, eiborRes] = await Promise.all([
-        sb.rpc('sql', {
-          query: `SELECT COUNT(*) as txns, SUM(actual_worth) as total_value FROM bronze.dld_transactions WHERE trans_group_en='Sales' AND DATE_TRUNC('month',instance_date)=DATE_TRUNC('month',NOW())`,
-        }).maybeSingle(),
+      // Single consolidated query for all Market Pulse data
+      const [allTxnRes, eiborRes] = await Promise.all([
         sb
-          .from('bronze.dld_transactions')
-          .select('instance_date, meter_sale_price')
-          .eq('trans_group_en', 'Sales')
-          .gt('meter_sale_price', 0)
-          .order('instance_date', { ascending: false })
-          .limit(5000),
-        sb
-          .from('bronze.dld_transactions')
-          .select('rooms_en, meter_sale_price')
-          .eq('trans_group_en', 'Sales')
-          .gt('meter_sale_price', 0)
-          .in('rooms_en', ['Studio', '1 B/R', '2 B/R', '3 B/R'])
-          .order('instance_date', { ascending: false })
-          .limit(3000),
-        sb
-          .from('bronze.dld_transactions')
-          .select('reg_type_en, actual_worth')
+          .schema('bronze').from('dld_transactions')
+          .select('instance_date, meter_sale_price, rooms_en, reg_type_en, actual_worth, area_name_en')
           .eq('trans_group_en', 'Sales')
           .order('instance_date', { ascending: false })
-          .limit(2000),
+          .limit(8000),
         sb
-          .from('bronze.dld_transactions')
-          .select('area_name_en, meter_sale_price')
-          .eq('trans_group_en', 'Sales')
-          .gt('meter_sale_price', 0)
-          .order('instance_date', { ascending: false })
-          .limit(5000),
-        sb
-          .from('bronze.eibor_rates')
+          .schema('bronze').from('eibor_rates')
           .select('*')
           .order('date', { ascending: false })
           .limit(2),
       ]);
 
-      // MTD — fallback to client-side count if RPC not available
-      if (mtdRes.data) {
-        const d = mtdRes.data as Record<string, unknown>;
-        setMtd({ count: Number(d.txns) || 0, totalValue: Number(d.total_value) || 0 });
-      }
+      const allTxns = (allTxnRes.data ?? []) as Record<string, unknown>[];
+
+      // MTD — compute client-side
+      const now = new Date();
+      const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      let mtdCount = 0;
+      let mtdVal = 0;
+      allTxns.forEach((r) => {
+        const d = new Date(r.instance_date as string);
+        const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (m === curMonth) {
+          mtdCount++;
+          mtdVal += (r.actual_worth as number) ?? 0;
+        }
+      });
+      setMtd({ count: mtdCount, totalValue: mtdVal });
+
+      // Alias results for downstream processing
+      const trendRes = allTxnRes;
+      const brRes = { data: allTxns.filter((r) => (r.meter_sale_price as number) > 0 && ['Studio', '1 B/R', '2 B/R', '3 B/R'].includes(r.rooms_en as string)) };
+      const opRes = allTxnRes;
+      const areaRes = { data: allTxns.filter((r) => (r.meter_sale_price as number) > 0 && r.area_name_en) };
 
       // PSF Trend — aggregate client-side by month
       if (trendRes.data) {
@@ -310,12 +303,12 @@ export function useHomeData(): HomeData {
           .order('announced_date', { ascending: false })
           .limit(20),
         sb
-          .from('bronze.safe_haven_catalysts')
+          .schema('bronze').from('safe_haven_catalysts')
           .select('event_name, event_type, origin_country, severity, capital_flow_direction, description, event_date')
           .order('event_date', { ascending: false })
           .limit(10),
         sb
-          .from('bronze.policy_events')
+          .schema('bronze').from('policy_events')
           .select('event_name, policy_type, direction, description, estimated_impact_pct, affected_communities, event_date')
           .order('event_date', { ascending: false })
           .limit(10),

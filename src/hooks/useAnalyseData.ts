@@ -28,7 +28,7 @@ export function useOverviewData(community: string | null) {
       const [txnRes, capRes] = await Promise.all([
         sb.rpc('get_overview_stats', { community_filter: community }).single(),
         sb
-          .from('gold.capital_flow_summary')
+          .schema('gold').from('capital_flow_summary')
           .select('capital_quality_score, rotation_origin, hard_capital_ratio, qoq_trajectory')
           .ilike('area_name', `%${community}%`)
           .limit(1)
@@ -85,12 +85,12 @@ export function usePhaseData(community: string | null) {
     const run = async () => {
       const [phRes, satRes] = await Promise.all([
         sb
-          .from('gold.phase_registry')
+          .schema('gold').from('phase_registry')
           .select('phase_name, status, completion_pct, units_total, units_delivered, sc_psf, developer, launch_date, handover_date')
           .ilike('community', `%${community}%`)
           .order('launch_date', { ascending: true }),
         sb
-          .from('bronze.masterplan_gee_queue')
+          .schema('bronze').from('masterplan_gee_queue')
           .select('community_name, amenity_class, delivery_verdict, gee_composite_end')
           .ilike('community_name', `%${community}%`)
           .eq('gee_status', 'DONE'),
@@ -142,7 +142,7 @@ export function useBlockingData(tower: string | null, community: string | null) 
     setLoading(true);
     const run = async () => {
       let query = sb
-        .from('gold.view_blocking_v3')
+        .schema('gold').from('view_blocking_v3')
         .select('view_name, view_type, blocker_name, blocker_status, risk_score, safe_above_floor, timeline, pct_of_view_blocked, block_severity')
         .order('risk_score', { ascending: false });
 
@@ -206,12 +206,12 @@ export function useSCData(project: string | null, community: string | null) {
       const pattern = project ? `%${project}%` : `%${community}%`;
       const [scRes, yieldRes] = await Promise.all([
         sb
-          .from('gold.sc_truth_layer')
+          .schema('gold').from('sc_truth_layer')
           .select('phase_name, mollak_sc, reported_sc, best_sc, sc_status, sc_note, mollak_year')
           .ilike('phase_name', pattern)
           .order('phase_name'),
         sb
-          .from('gold.rental_yield')
+          .schema('gold').from('rental_yield')
           .select('gross_yield_pct, vacancy_proxy_pct, avg_annual_rent, avg_purchase_price')
           .ilike('area_name', `%${community ?? project}%`)
           .limit(1)
@@ -270,13 +270,13 @@ export function useHandoverData(community: string | null) {
     const run = async () => {
       const [upRes, compRes] = await Promise.all([
         sb
-          .from('gold.phase_registry')
+          .schema('gold').from('phase_registry')
           .select('phase_name, community, developer, units_total, handover_date, completion_pct')
           .ilike('community', `%${community}%`)
           .gt('handover_date', new Date().toISOString())
           .order('handover_date', { ascending: true }),
         sb
-          .from('gold.phase_signals')
+          .schema('gold').from('phase_signals')
           .select('*')
           .eq('target_community', community)
           .order('similarity_score', { ascending: false })
@@ -329,13 +329,13 @@ export function useDeveloperTruthData(developer: string | null) {
     const run = async () => {
       const [scoreRes, amenityRes] = await Promise.all([
         sb
-          .from('gold.developer_scores')
+          .schema('gold').from('developer_scores')
           .select('*')
           .ilike('developer_name', `%${developer}%`)
           .limit(1)
           .maybeSingle(),
         sb
-          .from('bronze.masterplan_gee_queue')
+          .schema('bronze').from('masterplan_gee_queue')
           .select('amenity_class, delivery_verdict, delivery_score, gee_composite_end, verdict_logic')
           .ilike('master_developer', `%${developer}%`)
           .eq('gee_status', 'DONE'),

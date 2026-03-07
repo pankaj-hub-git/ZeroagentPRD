@@ -50,7 +50,7 @@ export function useXrayData(projectId: string | null) {
           .select('unit_type, total_area_sqft, units_per_floor, orientation, floor_plan_layout')
           .eq('project_id', projectId),
         sb
-          .from('bronze.dld_transactions')
+          .schema('bronze').from('dld_transactions')
           .select('instance_date, actual_worth, procedure_area, meter_sale_price, trans_group_en, property_type_en')
           .ilike('project_name_en', `%${projectId}%`)
           .eq('trans_group_en', 'Sales')

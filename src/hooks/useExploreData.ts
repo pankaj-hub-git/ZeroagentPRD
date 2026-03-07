@@ -146,7 +146,7 @@ export function useExploreData(): ExploreData {
     const run = async () => {
       const [areaRes, projRes, devRes] = await Promise.all([
         sb
-          .from('bronze.dld_transactions')
+          .schema('bronze').from('dld_transactions')
           .select('area_name_en')
           .eq('trans_group_en', 'Sales')
           .not('area_name_en', 'is', null)
@@ -156,7 +156,7 @@ export function useExploreData(): ExploreData {
           .select('id, project_name, developer, master_community, project_status, total_floors, total_units')
           .order('project_name'),
         sb
-          .from('gold.developer_scores')
+          .schema('gold').from('developer_scores')
           .select('developer, brand_tier, total_projects_dubai, delivery_rate_pct, build_quality_score')
           .order('brand_tier', { ascending: false }),
       ]);
@@ -240,30 +240,30 @@ export function useExploreData(): ExploreData {
           .order('base_impact_score', { ascending: false }),
         // Livability
         sb
-          .from('gold.livability_index')
+          .schema('gold').from('livability_index')
           .select('view_score, amenity_score, transit_score, construction_disruption, supply_pressure, livability_score, livability_grade, livability_label, summary')
           .limit(1),
         // Truth layer
         sb
-          .from('gold.truth_layer')
+          .schema('gold').from('truth_layer')
           .select('dda_completion_pct, dld_primary_sales_count, hidden_inventory, conflict_flag, conflict_type')
           .ilike('project_name_dld', `%${community}%`)
           .limit(1),
         // GEE satellite
         sb
-          .from('bronze.masterplan_gee_queue')
+          .schema('bronze').from('masterplan_gee_queue')
           .select('amenity_class, delivery_verdict, delivery_score, gee_composite_end')
           .ilike('community_name', `%${community}%`)
           .eq('gee_status', 'DONE'),
         // Phase registry
         sb
-          .from('gold.phase_registry')
+          .schema('gold').from('phase_registry')
           .select('phase_name, master_project_en, launch_psm, current_psm, total_return_pct, qoq_momentum, completion_pct, launch_date, latest_txn_date, developer_name, developer_tier')
           .or(`master_project_en.ilike.%${community}%,developer_name.ilike.%${selectedDeveloper ?? ''}%`)
           .order('launch_date'),
         // View blocking
         sb
-          .from('gold.view_blocking_v3')
+          .schema('gold').from('view_blocking_v3')
           .select('view_name, view_type, blocker_name, blocker_status, risk_score, safe_above_floor, timeline, pct_of_view_blocked, block_severity')
           .or(`observer_name.ilike.%${community}%,observer_project.ilike.%${community}%`)
           .order('risk_score', { ascending: false }),

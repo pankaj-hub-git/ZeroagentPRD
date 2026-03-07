@@ -18,19 +18,19 @@ export function useFilterOptions(): FilterOptions {
     const run = async () => {
       const [areaRes, projectRes, devRes] = await Promise.all([
         sb
-          .from('bronze.derived_project_registry')
+          .schema('bronze').from('derived_project_registry')
           .select('area_name')
           .not('area_name', 'is', null)
           .order('area_name')
           .limit(500),
         sb
-          .from('bronze.derived_project_registry')
+          .schema('bronze').from('derived_project_registry')
           .select('project_name')
           .not('project_name', 'is', null)
           .order('project_name')
           .limit(500),
         sb
-          .from('gold.phase_registry')
+          .schema('gold').from('phase_registry')
           .select('developer')
           .not('developer', 'is', null)
           .order('developer')

@@ -79,17 +79,17 @@ export function useFeedData() {
     const run = async () => {
       const [policy, macro, safeHaven, government, crisis] = await Promise.all([
         sb
-          .from('bronze.policy_events')
+          .schema('bronze').from('policy_events')
           .select('*')
           .order('event_date', { ascending: false })
           .limit(50),
         sb
-          .from('bronze.uae_macro')
+          .schema('bronze').from('uae_macro')
           .select('*')
           .order('date', { ascending: false })
           .limit(20),
         sb
-          .from('bronze.safe_haven_catalysts')
+          .schema('bronze').from('safe_haven_catalysts')
           .select('*')
           .order('date', { ascending: false })
           .limit(20),

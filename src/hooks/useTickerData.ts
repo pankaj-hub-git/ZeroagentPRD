@@ -16,12 +16,12 @@ export function useTickerData() {
     const run = async () => {
       const [policyRes, safeHavenRes, govRes] = await Promise.all([
         sb
-          .from('bronze.policy_events')
+          .schema('bronze').from('policy_events')
           .select('event_name, policy_type, direction')
           .order('event_date', { ascending: false })
           .limit(5),
         sb
-          .from('bronze.safe_haven_catalysts')
+          .schema('bronze').from('safe_haven_catalysts')
           .select('event_name, severity, capital_flow_direction')
           .order('event_date', { ascending: false })
           .limit(5),

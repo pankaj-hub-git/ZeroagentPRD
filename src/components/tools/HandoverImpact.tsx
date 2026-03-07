@@ -16,7 +16,7 @@ export function HandoverImpact() {
     }
     const run = async () => {
       const { data: rows } = await sb
-        .from('gold.phase_signals')
+        .schema('gold').from('phase_signals')
         .select('*')
         .eq('target_community', activeCommunity)
         .eq('signal_type', 'HANDOVER_FORECAST')

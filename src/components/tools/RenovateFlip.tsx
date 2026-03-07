@@ -24,7 +24,7 @@ export function RenovateFlip() {
     }
     const run = async () => {
       const { data: rows } = await sb
-        .from('gold.unit_condition_variance')
+        .schema('gold').from('unit_condition_variance')
         .select('renovation_type, avg_roi_pct, avg_value_add_aed, community, sample_size')
         .ilike('community', `%${activeCommunity}%`)
         .order('avg_roi_pct', { ascending: false });

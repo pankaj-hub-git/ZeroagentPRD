@@ -67,23 +67,23 @@ export function useMarketData(): MarketData {
     const run = async () => {
       const [txnRes, yieldRes, eiborRes, phaseRes] = await Promise.all([
         sb
-          .from('bronze.dld_transactions')
+          .schema('bronze').from('dld_transactions')
           .select('instance_date, rooms_en, actual_worth, meter_sale_price, reg_type_en, area_name_en')
           .eq('trans_group_en', 'Sales')
           .order('instance_date', { ascending: false })
           .limit(10000),
         sb
-          .from('gold.rental_yield')
+          .schema('gold').from('rental_yield')
           .select('area_name, gross_yield')
           .order('gross_yield', { ascending: false })
           .limit(20),
         sb
-          .from('bronze.eibor_rates')
+          .schema('bronze').from('eibor_rates')
           .select('*')
           .order('date', { ascending: false })
           .limit(12),
         sb
-          .from('gold.phase_mismatch')
+          .schema('gold').from('phase_mismatch')
           .select('phase_name, master_project_en, mismatch_label, ready_sale_psm, current_psm')
           .in('mismatch_label', ['OVERPRICED_OFFPLAN', 'DEEP_DISCOUNT_OFFPLAN', 'READY_PREMIUM'])
           .order('current_psm', { ascending: false })

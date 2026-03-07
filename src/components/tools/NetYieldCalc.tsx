@@ -16,13 +16,13 @@ export function NetYieldCalc() {
     const load = async () => {
       const [scRes, yieldRes] = await Promise.all([
         sb
-          .from('gold.sc_truth_layer')
+          .schema('gold').from('sc_truth_layer')
           .select('best_sc')
           .ilike('phase_name', `%${activeCommunity}%`)
           .limit(1)
           .maybeSingle(),
         sb
-          .from('gold.rental_yield')
+          .schema('gold').from('rental_yield')
           .select('gross_yield_pct, vacancy_proxy_pct')
           .ilike('area_name', `%${activeCommunity}%`)
           .limit(1)
