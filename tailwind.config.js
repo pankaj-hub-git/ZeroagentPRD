@@ -19,8 +19,8 @@ export default {
         narrative: '#95A5A6',
       },
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
-        mono: ['Courier New', 'monospace'],
+        sans: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       fontSize: {
         heading: '22px',
