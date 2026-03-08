@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from '@/lib/theme';
 import { bronze, layers } from '@/lib/supabase';
 import { Loader2, Search, Sun, Moon } from 'lucide-react';
-import MapGL, { Marker, Popup, type MapRef } from 'react-map-gl';
+import MapGL, { Marker, Popup, Source, Layer, type MapRef } from 'react-map-gl';
+import type { FillLayer, LineLayer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,10 +86,13 @@ export function SatellitePage() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapboxRef = useRef<MapRef>(null);
 
-  // Refresh community list from live DB
+  // Refresh community list from live DB, then count amenities per community
   useEffect(() => {
     (async () => {
       try {
+        // Build seed lookup for fallback amenity_count
+        const seedMap = new Map(SEED_COMMUNITIES.map(s => [s.community_key, s.amenity_count]));
+
         const { data, error } = await bronze().from('masterplan_images')
           .select('community_key, community_name, developer, image_url, bbox_west, bbox_south, bbox_east, bbox_north, source_confidence')
           .order('community_name', { ascending: true });
@@ -97,7 +101,7 @@ export function SatellitePage() {
           return;
         }
         if (data?.length) {
-          setCommunities(data.map((d: R) => ({
+          const comms: Community[] = data.map((d: R) => ({
             community_key: d.community_key || '',
             community_name: d.community_name || '',
             developer: d.developer || '',
@@ -105,7 +109,35 @@ export function SatellitePage() {
             source_confidence: d.source_confidence || 'MEDIUM',
             bbox_west: Number(d.bbox_west), bbox_south: Number(d.bbox_south),
             bbox_east: Number(d.bbox_east), bbox_north: Number(d.bbox_north),
-            amenity_count: 0,
+            amenity_count: seedMap.get(d.community_key) ?? 0,
+          }));
+          setCommunities(comms);
+
+          // Count amenities per community from layers.amenities in parallel
+          const countPromises = comms.map(async (c) => {
+            try {
+              // Try lat/lng columns first, fall back to latitude/longitude
+              let res = await layers().from('amenities')
+                .select('id', { count: 'exact', head: true })
+                .gte('lat', c.bbox_south).lte('lat', c.bbox_north)
+                .gte('lng', c.bbox_west).lte('lng', c.bbox_east);
+              if (res.error) {
+                // Try alternate column names
+                res = await layers().from('amenities')
+                  .select('id', { count: 'exact', head: true })
+                  .gte('latitude', c.bbox_south).lte('latitude', c.bbox_north)
+                  .gte('longitude', c.bbox_west).lte('longitude', c.bbox_east);
+              }
+              return { key: c.community_key, count: res.count ?? (seedMap.get(c.community_key) ?? 0) };
+            } catch {
+              return { key: c.community_key, count: seedMap.get(c.community_key) ?? 0 };
+            }
+          });
+          const counts = await Promise.all(countPromises);
+          const countMap = new Map(counts.map(c => [c.key, c.count]));
+          setCommunities(prev => prev.map(c => ({
+            ...c,
+            amenity_count: countMap.get(c.community_key) ?? c.amenity_count,
           })));
         }
       } catch (e) {
@@ -125,15 +157,31 @@ export function SatellitePage() {
 
     try {
       // Try loading amenities from layers.amenities using bbox filter
-      // The table has lat/lng columns extracted from geometry
-      const { data, error } = await layers().from('amenities')
+      // Try lat/lng first, then latitude/longitude as fallback
+      let data: R[] | null = null;
+      let error: { message: string } | null = null;
+
+      const res1 = await layers().from('amenities')
         .select('id, name, amenity_type, amenity_category, is_operational, lat, lng')
-        .gte('lat', com.bbox_south)
-        .lte('lat', com.bbox_north)
-        .gte('lng', com.bbox_west)
-        .lte('lng', com.bbox_east)
+        .gte('lat', com.bbox_south).lte('lat', com.bbox_north)
+        .gte('lng', com.bbox_west).lte('lng', com.bbox_east)
         .order('amenity_type', { ascending: true })
-        .limit(300);
+        .limit(500);
+
+      if (res1.error) {
+        console.warn('[Satellite] lat/lng failed, trying latitude/longitude:', res1.error.message);
+        const res2 = await layers().from('amenities')
+          .select('id, name, amenity_type, amenity_category, is_operational, latitude, longitude')
+          .gte('latitude', com.bbox_south).lte('latitude', com.bbox_north)
+          .gte('longitude', com.bbox_west).lte('longitude', com.bbox_east)
+          .order('amenity_type', { ascending: true })
+          .limit(500);
+        data = res2.data;
+        error = res2.error;
+      } else {
+        data = res1.data;
+        error = res1.error;
+      }
 
       if (error) {
         console.error('[Satellite] amenities query error:', error.message);
@@ -145,8 +193,8 @@ export function SatellitePage() {
           amenity_type: a.amenity_type || '',
           amenity_category: a.amenity_category || '',
           is_operational: a.is_operational ?? true,
-          lat: Number(a.lat),
-          lng: Number(a.lng),
+          lat: Number(a.lat ?? a.latitude),
+          lng: Number(a.lng ?? a.longitude),
         }));
         setAmenities(amenityData);
         setStatus(`${amenityData.length} amenities · ${com.community_name}`);
@@ -190,6 +238,23 @@ export function SatellitePage() {
     [amenities, categories]
   );
 
+  // GeoJSON polygon for community bbox overlay
+  const bboxGeoJSON = useMemo(() => {
+    if (!selected) return null;
+    const { bbox_west: w, bbox_south: s, bbox_east: e, bbox_north: n } = selected;
+    return {
+      type: 'FeatureCollection' as const,
+      features: [{
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]],
+        },
+        properties: { name: selected.community_name },
+      }],
+    };
+  }, [selected]);
+
   // Fly mapbox to community bounds when selected
   const flyToSelected = useCallback(() => {
     if (!selected || !mapboxRef.current) return;
@@ -216,6 +281,15 @@ export function SatellitePage() {
   const dotBg = isDark ? '#091422' : '#f0f4f8';
   const overlayBg = isDark ? '#07080da8' : '#ffffffd0';
   const tooltipBg = isDark ? '#07080d' : '#ffffff';
+
+  const bboxFillLayer: FillLayer = {
+    id: 'bbox-fill', type: 'fill', source: 'community-bbox',
+    paint: { 'fill-color': accentBlue, 'fill-opacity': 0.08 },
+  };
+  const bboxLineLayer: LineLayer = {
+    id: 'bbox-line', type: 'line', source: 'community-bbox',
+    paint: { 'line-color': accentBlue, 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.7 },
+  };
 
   return (
     <div style={{ fontFamily: "'JetBrains Mono','Courier New',monospace", background: bg, color: textSecondary, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -417,6 +491,14 @@ export function SatellitePage() {
                         </div>
                       </Popup>
                     )}
+
+                    {/* Community bbox polygon overlay */}
+                    {bboxGeoJSON && (
+                      <Source id="community-bbox" type="geojson" data={bboxGeoJSON}>
+                        <Layer {...bboxFillLayer} />
+                        <Layer {...bboxLineLayer} />
+                      </Source>
+                    )}
                   </MapGL>
                 ) : (
                   /* ═══ MASTERPLAN OVERLAY VIEW ═══ */
@@ -430,6 +512,27 @@ export function SatellitePage() {
                       onError={() => setImgLoaded(true)}
                       style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', opacity: imgLoaded ? 1 : 0, transition: 'opacity .5s' }}
                     />
+                    {/* Bbox polygon overlay on masterplan */}
+                    {imgLoaded && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        border: `2px dashed ${accentBlue}90`,
+                        borderRadius: 2,
+                        boxShadow: `inset 0 0 30px ${accentBlue}15, 0 0 0 1px ${accentBlue}20`,
+                        pointerEvents: 'none',
+                      }}>
+                        {/* Corner markers */}
+                        {[[0, 0], [100, 0], [100, 100], [0, 100]].map(([x, y], i) => (
+                          <div key={i} style={{
+                            position: 'absolute',
+                            left: x === 0 ? -3 : undefined, right: x === 100 ? -3 : undefined,
+                            top: y === 0 ? -3 : undefined, bottom: y === 100 ? -3 : undefined,
+                            width: 6, height: 6, borderRadius: '50%',
+                            background: accentBlue, boxShadow: `0 0 8px ${accentBlue}`,
+                          }} />
+                        ))}
+                      </div>
+                    )}
 
                     {/* Pins */}
                     {imgLoaded && visible.map((a, idx) => {
