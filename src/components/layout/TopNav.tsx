@@ -1,11 +1,8 @@
 import { NavLink } from 'react-router-dom';
-import { Home, BarChart3, Search, Building2 } from 'lucide-react';
+import { Home } from 'lucide-react';
 
 const links = [
   { to: '/', label: 'Home', icon: Home },
-  { to: '/market', label: 'Market', icon: BarChart3 },
-  { to: '/explore', label: 'Explore', icon: Search },
-  { to: '/xray', label: 'X-Ray', icon: Building2 },
 ];
 
 export function TopNav() {

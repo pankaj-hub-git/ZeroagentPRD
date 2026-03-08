@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useHomeData, FeedItem, CapitalFlow, SupplyItem } from '@/hooks/useHomeData';
+import { useHomeData, FeedItem, CapitalFlow } from '@/hooks/useHomeData';
 import { fmtNum, fmtDate, fmtAed } from '@/lib/constants';
 import { useTheme } from '@/lib/theme';
 import { Loader2, TrendingUp, TrendingDown, Sun, Moon } from 'lucide-react';
@@ -11,6 +11,7 @@ import { RERAFeedTab } from '@/components/dashboard/RERAFeedTab';
 import { DeveloperNewsTab } from '@/components/dashboard/DeveloperNewsTab';
 import { TransactionsFeedTab } from '@/components/dashboard/TransactionsFeedTab';
 import { TourismDashboard } from '@/components/dashboard/TourismDashboard';
+import { MacroTicker } from '@/components/dashboard/MacroTicker';
 
 const GOLD = '#C9A84C';
 const BLUE = '#2E75B6';
@@ -62,7 +63,7 @@ const SOURCE_STYLE: Record<string, { label: string; color: string }> = {
   policy: { label: 'POLICY', color: RED },
 };
 
-type Tab = 'feed' | 'dashboard' | 'transactions' | 'rera' | 'devnews' | 'capital' | 'supply';
+type Tab = 'feed' | 'dashboard' | 'transactions' | 'rera' | 'devnews' | 'tourism' | 'capital';
 
 function FeedCard({ item }: { item: FeedItem }) {
   const style = SOURCE_STYLE[item.source] ?? SOURCE_STYLE.policy;
@@ -274,67 +275,6 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
   );
 }
 
-/* ── Tab: Supply Pipeline ───────────────────────────────────── */
-function SupplyTab({ supplyPipeline, loading }: { supplyPipeline: SupplyItem[]; loading: boolean }) {
-  if (loading) return <Spinner />;
-  if (supplyPipeline.length === 0) return <p className="text-body text-text-dim">No supply pipeline data available</p>;
-
-  return (
-    <div className="space-y-4">
-      <div className="text-label text-text-dim">Off-Plan Supply Pipeline — Active Phases</div>
-
-      {/* Completion chart */}
-      <div className="bg-surface border border-border rounded-lg p-4">
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={supplyPipeline.slice(0, 15)} layout="vertical">
-            <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false}
-              tickFormatter={(v: number) => `${v}%`} />
-            <YAxis type="category" dataKey="phaseName" tick={{ fontSize: 8, fill: '#8892A4' }} axisLine={false} tickLine={false} width={120} />
-            <Tooltip contentStyle={{ backgroundColor: '#1A1A2E', border: '1px solid #2A2A40', fontSize: 11 }}
-              formatter={(v: number | undefined) => [`${v ?? 0}%`, 'Completion']} />
-            <Bar dataKey="completionPct" fill={BLUE} radius={[0, 4, 4, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Table */}
-      <div className="bg-surface border border-border rounded-lg p-4 overflow-x-auto">
-        <table className="w-full text-micro">
-          <thead>
-            <tr className="text-left text-[9px] text-text-dim uppercase tracking-wider">
-              <th className="pb-2 pr-3">Phase</th>
-              <th className="pb-2 pr-3">Project</th>
-              <th className="pb-2 pr-3">Developer</th>
-              <th className="pb-2 pr-3 text-right">Launch</th>
-              <th className="pb-2 pr-3 text-right">Completion</th>
-              <th className="pb-2 text-right">PSF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {supplyPipeline.map((s, i) => (
-              <tr key={i} className="border-t border-border/50">
-                <td className="py-1.5 pr-3 text-text-primary truncate max-w-[120px]">{s.phaseName}</td>
-                <td className="py-1.5 pr-3 text-text-secondary truncate max-w-[100px]">{s.masterProject}</td>
-                <td className="py-1.5 pr-3 text-text-dim truncate max-w-[100px]">{s.developer}</td>
-                <td className="py-1.5 pr-3 text-right text-text-dim">{s.launchDate ? fmtDate(s.launchDate) : '—'}</td>
-                <td className="py-1.5 pr-3 text-right">
-                  <div className="flex items-center gap-1.5 justify-end">
-                    <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${s.completionPct}%`, backgroundColor: s.completionPct > 70 ? GREEN : s.completionPct > 30 ? ORANGE : BLUE }} />
-                    </div>
-                    <span className="font-mono text-text-dim">{s.completionPct}%</span>
-                  </div>
-                </td>
-                <td className="py-1.5 text-right font-mono text-gold">{s.currentPsf > 0 ? fmtNum(s.currentPsf) : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 /* ── Main Page ─────────────────────────────────────────────── */
 export function HomePage() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -347,8 +287,8 @@ export function HomePage() {
     { key: 'transactions', label: 'Transactions' },
     { key: 'rera', label: 'RERA Feed' },
     { key: 'devnews', label: 'Developer News' },
+    { key: 'tourism', label: 'Tourism' },
     { key: 'capital', label: 'Capital Rotation' },
-    { key: 'supply', label: 'Supply Pipeline' },
   ];
 
   return (
@@ -380,6 +320,11 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* Macro Ticker */}
+      <div className="shrink-0">
+        <MacroTicker />
+      </div>
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'feed' && (
@@ -394,18 +339,11 @@ export function HomePage() {
 
         {activeTab === 'devnews' && <DeveloperNewsTab />}
 
+        {activeTab === 'tourism' && <TourismDashboard />}
+
         {activeTab === 'capital' && (
           <CapitalTab capitalFlow={data.capitalFlow} loading={data.dashLoading} />
         )}
-
-        {activeTab === 'supply' && (
-          <SupplyTab supplyPipeline={data.supplyPipeline} loading={data.dashLoading} />
-        )}
-
-        {/* Tourism Intelligence — always visible below tabs */}
-        <div className="mt-8 pt-6 border-t border-border">
-          <TourismDashboard />
-        </div>
       </div>
     </div>
   );

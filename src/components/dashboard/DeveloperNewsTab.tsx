@@ -101,32 +101,47 @@ function PhaseCard({ item }: { item: PhaseItem }) {
 export function DeveloperNewsTab() {
   const [items, setItems] = useState<PhaseItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
-      const { data } = await gold().from('phase_registry')
-        .select('phase_name, master_project_en, developer_name, developer_tier, launch_date, completion_pct, current_psm, total_return_pct, qoq_momentum')
-        .order('launch_date', { ascending: false })
-        .limit(50);
+      try {
+        const { data, error: dbError } = await gold().from('phase_registry')
+          .select('phase_name, master_project_en, developer_name, developer_tier, launch_date, completion_pct, current_psm, total_return_pct, qoq_momentum')
+          .order('launch_date', { ascending: false })
+          .limit(50);
 
-      setItems((data ?? []).map((r: Record<string, unknown>, i: number) => ({
-        id: `dev-${i}`,
-        phase_name: (r.phase_name as string) ?? '',
-        master_project_en: (r.master_project_en as string) ?? '',
-        developer_name: (r.developer_name as string) ?? '',
-        developer_tier: (r.developer_tier as string) ?? '',
-        launch_date: (r.launch_date as string) ?? '',
-        completion_pct: (r.completion_pct as number) ?? 0,
-        current_psm: (r.current_psm as number) ?? 0,
-        total_return_pct: (r.total_return_pct as number) ?? 0,
-        qoq_momentum: (r.qoq_momentum as string) ?? '',
-      })));
+        if (dbError) {
+          console.warn('[DeveloperNews] Supabase error:', dbError.message);
+          setError('Unable to load developer data');
+          setLoading(false);
+          return;
+        }
+
+        setItems((data ?? []).map((r: Record<string, unknown>, i: number) => ({
+          id: `dev-${i}`,
+          phase_name: (r.phase_name as string) ?? '',
+          master_project_en: (r.master_project_en as string) ?? '',
+          developer_name: (r.developer_name as string) ?? '',
+          developer_tier: (r.developer_tier as string) ?? '',
+          launch_date: (r.launch_date as string) ?? '',
+          completion_pct: (r.completion_pct as number) ?? 0,
+          current_psm: (r.current_psm as number) ?? 0,
+          total_return_pct: (r.total_return_pct as number) ?? 0,
+          qoq_momentum: (r.qoq_momentum as string) ?? '',
+        })));
+      } catch (e) {
+        console.warn('[DeveloperNews] Error:', e);
+        setError('Unable to load developer data');
+      }
       setLoading(false);
     };
     run();
   }, []);
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gold" size={24} /></div>;
+
+  if (error) return <p className="text-body text-text-dim">{error}</p>;
 
   if (items.length === 0) return <p className="text-body text-text-dim">No developer announcements available</p>;
 

@@ -22,11 +22,11 @@
 [data-theme="light"] {
   --color-bg: #F5F5F0;
   --color-surface: #FFFFFF;
-  --color-border: #E0DDD5;
-  --color-gold: #9B7B31;
+  --color-border: #C8C4B8;
+  --color-gold: #6B5518;
   --color-text-primary: #1A1A1A;
-  --color-text-secondary: #555555;
-  --color-text-dim: #999999;
+  --color-text-secondary: #444444;
+  --color-text-dim: #777777;
   --color-verified: #1B8A6B;
   --color-warn: #D4850A;
   --color-danger: #C0392B;
