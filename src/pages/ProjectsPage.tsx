@@ -535,9 +535,68 @@ export function ProjectsPage() {
                     <div>
                       <Section title="View Blocking Analysis" subtitle="Nearby buildings that may obstruct views — from GIS + satellite analysis" accent colors={colors}>
                         {viewBlocking.length === 0 ? (
-                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>
-                            View blocking data not available for {sel.master_community}. Currently covers: Downtown, Business Bay, Dubai Hills, Arabian Ranches III, City Walk, DIFC.
-                          </div></PCard>
+                          <>
+                            {/* Orientation intelligence fallback when no GIS data */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                              <PCard colors={colors}>
+                                <div className="za-data-label" style={{ color: colors.green }}>BEST DIRECTION</div>
+                                <div style={{ fontSize: 16, fontWeight: 400, marginTop: 6, color: colors.text }}>{sel.apt_best_direction || sel.orientation_primary || '—'}</div>
+                                {sel.apt_best_floor_range && <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Best floors: {sel.apt_best_floor_range}</div>}
+                              </PCard>
+                              <PCard colors={colors}>
+                                <div className="za-data-label" style={{ color: colors.red }}>CAUTION DIRECTION</div>
+                                <div style={{ fontSize: 16, fontWeight: 400, marginTop: 6, color: colors.text }}>{sel.apt_worst_direction || '—'}</div>
+                                {sel.apt_noise_floor_threshold && <div style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>Noise above floor {sel.apt_noise_floor_threshold}</div>}
+                              </PCard>
+                            </div>
+                            {(sel.apt_floor_premium_pct || sel.apt_view_premium_pct) && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                                {sel.apt_floor_premium_pct && <PCard colors={colors}>
+                                  <div className="za-data-label">FLOOR PREMIUM</div>
+                                  <div style={{ fontSize: 24, fontWeight: 300, color: colors.gold, marginTop: 4 }}>+{sel.apt_floor_premium_pct}%<span style={{ fontSize: 12, color: colors.textDim }}>/floor</span></div>
+                                  <div style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>Average price increase per floor level</div>
+                                </PCard>}
+                                {sel.apt_view_premium_pct && <PCard colors={colors}>
+                                  <div className="za-data-label">VIEW PREMIUM</div>
+                                  <div style={{ fontSize: 24, fontWeight: 300, color: colors.gold, marginTop: 4 }}>+{sel.apt_view_premium_pct}%</div>
+                                  <div style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>Best vs worst direction price gap</div>
+                                </PCard>}
+                              </div>
+                            )}
+                            {sel.orientation_views?.length > 0 && (
+                              <PCard colors={colors} style={{ marginBottom: 16 }}>
+                                <div className="za-data-label" style={{ marginBottom: 8 }}>AVAILABLE VIEWS</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                  {sel.orientation_views.map((v: string, i: number) => (
+                                    <span key={i} className="za-badge" style={{ padding: '4px 10px', background: colors.goldBg, border: `1px solid ${colors.gold}44`, color: colors.textSecondary }}>
+                                      {v.replace(/_/g, ' ')}
+                                    </span>
+                                  ))}
+                                </div>
+                              </PCard>
+                            )}
+                            {sel.orientation_primary && (
+                              <PCard colors={colors} style={{ marginBottom: 16 }}>
+                                <div className="za-data-label" style={{ marginBottom: 8 }}>BUILDING ORIENTATION SUMMARY</div>
+                                <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
+                                  {sel.project_name} has a primary orientation of {sel.orientation_primary}.
+                                  {sel.apt_best_direction && ` The best direction is ${sel.apt_best_direction}`}
+                                  {sel.apt_worst_direction && `, while ${sel.apt_worst_direction} should be approached with caution`}
+                                  {sel.apt_noise_floor_threshold && ` (noise attenuates above floor ${sel.apt_noise_floor_threshold})`}.
+                                  {sel.apt_view_premium_pct && ` The view premium between best and worst direction is approximately ${sel.apt_view_premium_pct}%.`}
+                                  {sel.apt_floor_premium_pct && ` Each floor adds roughly ${sel.apt_floor_premium_pct}% to the price.`}
+                                </div>
+                              </PCard>
+                            )}
+                            <div className="za-signal-box za-signal-box--gold" style={{ textAlign: 'center' }}>
+                              <div style={{ fontSize: 10, color: colors.gold, fontWeight: 600, marginBottom: 4 }}>GIS VIEW BLOCKING DATA</div>
+                              <div style={{ fontSize: 11, color: colors.textSecondary }}>
+                                Building-by-building view blocking analysis is not yet available for {sel.master_community}.
+                                Currently covers: Downtown Dubai, Business Bay, Dubai Hills, Arabian Ranches III, City Walk, DIFC.
+                                The orientation data above is derived from brochure and transaction analysis, not satellite imagery.
+                              </div>
+                            </div>
+                          </>
                         ) : (
                           <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
@@ -759,7 +818,7 @@ export function ProjectsPage() {
                               {a.community_sentiment_score && <span style={{ fontSize: 10, color: colors.gold, marginLeft: 8 }}>Sentiment: {Number(a.community_sentiment_score).toFixed(1)}/5</span>}
                             </div>
                             <Badge
-                              color={a.delivery_status === 'fully_delivered' || a.delivery_status === 'exceeded' ? colors.green : a.delivery_status === 'pending_verification' || a.delivery_status === 'partially_delivered' ? colors.orange : colors.red}
+                              color={a.delivery_status === 'fully_delivered' || a.delivery_status === 'exceeded' ? colors.green : a.delivery_status === 'planned' ? colors.blue : a.delivery_status === 'pending_verification' || a.delivery_status === 'partially_delivered' ? colors.orange : colors.red}
                               label={a.delivery_status?.replace(/_/g, ' ').toUpperCase()}
                             />
                           </PCard>
