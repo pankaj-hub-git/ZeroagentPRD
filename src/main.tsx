@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/lib/theme';
 import { AppShell } from '@/components/layout/AppShell';
 import { HomePage } from '@/pages/HomePage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
+import { SatellitePage } from '@/pages/SatellitePage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -15,6 +16,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route element={<AppShell />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/satellite" element={<SatellitePage />} />
           <Route path="*" element={<HomePage />} />
         </Route>
       </Routes>
