@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from '@/lib/theme';
 import { bronze, layers } from '@/lib/supabase';
 import { Loader2, Search, Sun, Moon } from 'lucide-react';
+import MapGL, { Marker, Popup, type MapRef } from 'react-map-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type R = Record<string, any>;
@@ -78,7 +80,10 @@ export function SatellitePage() {
   const [filterCat, setFilterCat] = useState('all');
   const [filterOp, setFilterOp] = useState('all');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'masterplan' | 'mapbox'>('masterplan');
+  const [popupAmenity, setPopupAmenity] = useState<Amenity | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapboxRef = useRef<MapRef>(null);
 
   // Refresh community list from live DB
   useEffect(() => {
@@ -184,6 +189,19 @@ export function SatellitePage() {
     }), {}),
     [amenities, categories]
   );
+
+  // Fly mapbox to community bounds when selected
+  const flyToSelected = useCallback(() => {
+    if (!selected || !mapboxRef.current) return;
+    mapboxRef.current.fitBounds(
+      [[selected.bbox_west, selected.bbox_south], [selected.bbox_east, selected.bbox_north]],
+      { padding: 40, duration: 1500 }
+    );
+  }, [selected]);
+
+  useEffect(() => {
+    if (viewMode === 'mapbox') flyToSelected();
+  }, [selected, viewMode, flyToSelected]);
 
   // Theme-adaptive colors
   const bg = isDark ? '#07080d' : '#f5f7fa';
@@ -325,14 +343,18 @@ export function SatellitePage() {
                     </button>
                   );
                 })}
-                <div style={{ marginLeft: 'auto', fontSize: 9, color: textDim, flexShrink: 0 }}>
-                  {visible.length} pins shown
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 9, color: textDim }}>{visible.length} pins</span>
+                  <div style={{ width: 1, height: 14, background: borderC }} />
+                  <button className={`sat-chip${viewMode === 'masterplan' ? ' on' : ''}`} onClick={() => setViewMode('masterplan')}>PLAN</button>
+                  <button className={`sat-chip${viewMode === 'mapbox' ? ' on' : ''}`}
+                    style={viewMode === 'mapbox' ? { borderColor: '#10b981', color: '#10b981', background: '#10b98112' } : {}}
+                    onClick={() => setViewMode('mapbox')}>SATELLITE</button>
                 </div>
               </div>
 
-              {/* Map */}
-              <div ref={mapRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', background: isDark ? '#04080e' : '#e8ecf0', cursor: 'default' }}
-                onClick={() => setHovered(null)}>
+              {/* Map area */}
+              <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
                 {/* Spinner */}
                 {loading && (
                   <div style={{ position: 'absolute', inset: 0, background: isDark ? '#04080ecc' : '#ffffffcc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, zIndex: 60 }}>
@@ -341,114 +363,167 @@ export function SatellitePage() {
                   </div>
                 )}
 
-                {/* Masterplan image */}
-                <img
-                  src={selected.image_url}
-                  alt={selected.community_name}
-                  onLoad={() => setImgLoaded(true)}
-                  onError={() => setImgLoaded(true)}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', opacity: imgLoaded ? 1 : 0, transition: 'opacity .5s' }}
-                />
+                {/* ═══ MAPBOX SATELLITE VIEW ═══ */}
+                {viewMode === 'mapbox' ? (
+                  <MapGL
+                    ref={mapboxRef}
+                    mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
+                    mapStyle={isDark ? 'mapbox://styles/mapbox/satellite-streets-v12' : 'mapbox://styles/mapbox/satellite-v9'}
+                    initialViewState={{
+                      longitude: (selected.bbox_west + selected.bbox_east) / 2,
+                      latitude: (selected.bbox_south + selected.bbox_north) / 2,
+                      zoom: 14,
+                    }}
+                    style={{ width: '100%', height: '100%' }}
+                    onLoad={flyToSelected}
+                  >
+                    {/* Amenity markers */}
+                    {visible.map(a => {
+                      const cat = a.amenity_type || a.amenity_category || 'default';
+                      const color = CAT_COLORS[cat] || CAT_COLORS.default;
+                      const dotColor = a.is_operational ? color : '#4a6a8a';
+                      return (
+                        <Marker key={a.id} longitude={a.lng} latitude={a.lat} anchor="center"
+                          onClick={e => { e.originalEvent.stopPropagation(); setPopupAmenity(a); }}>
+                          <div style={{
+                            width: a.is_operational ? 12 : 8, height: a.is_operational ? 12 : 8,
+                            borderRadius: '50%', background: dotColor,
+                            border: `2px solid ${a.is_operational ? '#fff' : '#555'}`,
+                            boxShadow: `0 0 6px ${dotColor}aa, 0 1px 3px #0006`,
+                            cursor: 'pointer',
+                          }} />
+                        </Marker>
+                      );
+                    })}
 
-                {/* Pins */}
-                {imgLoaded && visible.map((a, idx) => {
-                  const { x, y } = toPercent(a.lat, a.lng, selected);
-                  if (x < -1 || x > 101 || y < -1 || y > 101) return null;
-                  const cat = a.amenity_type || a.amenity_category || 'default';
-                  const color = CAT_COLORS[cat] || CAT_COLORS.default;
-                  const dotColor = a.is_operational ? color : '#4a6a8a';
-                  const isHov = hovered?.id === a.id;
-
-                  return (
-                    <div key={a.id}
-                      style={{
-                        position: 'absolute', left: `${x}%`, top: `${y}%`, zIndex: isHov ? 50 : 10, cursor: 'pointer',
-                        animation: `pinDrop .3s cubic-bezier(.34,1.56,.64,1) ${Math.min(idx, 30) * 15}ms both`,
-                      }}
-                      onMouseEnter={e => { e.stopPropagation(); setHovered(a); }}
-                      onMouseLeave={() => setHovered(null)}
-                      onClick={e => e.stopPropagation()}>
-                      {/* Pulse ring */}
-                      {a.is_operational && (
-                        <div style={{
-                          position: 'absolute', width: 10, height: 10, left: '50%', top: '50%', borderRadius: '50%',
-                          border: `1.5px solid ${color}`, animation: 'ringPulse 2.2s ease-out infinite',
-                        }} />
-                      )}
-                      {/* Dot */}
-                      <div style={{
-                        position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
-                        width: isHov ? 13 : a.is_operational ? 9 : 7,
-                        height: isHov ? 13 : a.is_operational ? 9 : 7,
-                        borderRadius: '50%', background: dotColor,
-                        border: `${isHov ? 2 : 1.5}px solid ${a.is_operational ? '#fff' : '#2a3a4a'}`,
-                        boxShadow: isHov ? `0 0 14px ${dotColor},0 0 6px #000` : a.is_operational ? `0 0 5px ${dotColor}70` : 'none',
-                        transition: 'all .15s',
-                      }} />
-
-                      {/* Tooltip */}
-                      {isHov && (
-                        <div style={{
-                          position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)',
-                          background: tooltipBg, border: `1px solid ${color}60`,
-                          borderRadius: 4, padding: '8px 12px', whiteSpace: 'nowrap',
-                          pointerEvents: 'none', animation: 'slideIn .1s ease',
-                          boxShadow: `0 6px 24px ${isDark ? '#000c' : '#0003'}, 0 0 0 1px ${color}20`,
-                          minWidth: 160,
-                        }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: textPrimary, marginBottom: 5 }}>{a.name}</div>
-                          <div style={{ display: 'flex', gap: 10 }}>
-                            <span style={{ fontSize: 8, color, letterSpacing: 0.5, textTransform: 'uppercase' }}>{cat}</span>
-                            <span style={{ fontSize: 8, color: a.is_operational ? '#10b981' : '#ef4444' }}>
-                              {a.is_operational ? '● Operational' : '○ Not yet'}
+                    {/* Popup */}
+                    {popupAmenity && (
+                      <Popup longitude={popupAmenity.lng} latitude={popupAmenity.lat} anchor="bottom" offset={14}
+                        onClose={() => setPopupAmenity(null)} closeButton={false}
+                        style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ padding: '4px 2px', minWidth: 140 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#111', marginBottom: 4 }}>{popupAmenity.name}</div>
+                          <div style={{ display: 'flex', gap: 8, fontSize: 8 }}>
+                            <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || '#666', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              {popupAmenity.amenity_type || popupAmenity.amenity_category}
+                            </span>
+                            <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
+                              {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
                             </span>
                           </div>
-                          <div style={{ fontSize: 7.5, color: textDim, marginTop: 4 }}>
-                            {a.lat?.toFixed(5)}°N, {a.lng?.toFixed(5)}°E
+                          <div style={{ fontSize: 7, color: '#888', marginTop: 3 }}>
+                            {popupAmenity.lat.toFixed(5)}°N, {popupAmenity.lng.toFixed(5)}°E
                           </div>
-                          <div style={{
-                            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                            width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-                            borderTop: `6px solid ${color}60`,
-                          }} />
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      </Popup>
+                    )}
+                  </MapGL>
+                ) : (
+                  /* ═══ MASTERPLAN OVERLAY VIEW ═══ */
+                  <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative', background: isDark ? '#04080e' : '#e8ecf0', cursor: 'default' }}
+                    onClick={() => setHovered(null)}>
+                    {/* Masterplan image */}
+                    <img
+                      src={selected.image_url}
+                      alt={selected.community_name}
+                      onLoad={() => setImgLoaded(true)}
+                      onError={() => setImgLoaded(true)}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', opacity: imgLoaded ? 1 : 0, transition: 'opacity .5s' }}
+                    />
 
-                {/* Community title overlay */}
-                {imgLoaded && (
-                  <div style={{ position: 'absolute', top: 12, left: 12, pointerEvents: 'none', animation: 'slideIn .4s ease' }}>
-                    <div style={{
-                      fontFamily: "'Barlow Condensed',sans-serif", fontSize: 24, fontWeight: 800, color: '#fff',
-                      letterSpacing: 2, textShadow: '0 2px 12px #000, 0 0 40px #00000090',
-                    }}>
-                      {selected.community_name.toUpperCase()}
-                    </div>
-                    <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,.55)', letterSpacing: 1, marginTop: 2, textShadow: '0 1px 6px #000' }}>
-                      {selected.developer} · {selected.source_confidence} CONFIDENCE
-                    </div>
+                    {/* Pins */}
+                    {imgLoaded && visible.map((a, idx) => {
+                      const { x, y } = toPercent(a.lat, a.lng, selected);
+                      if (x < -1 || x > 101 || y < -1 || y > 101) return null;
+                      const cat = a.amenity_type || a.amenity_category || 'default';
+                      const color = CAT_COLORS[cat] || CAT_COLORS.default;
+                      const dotColor = a.is_operational ? color : '#4a6a8a';
+                      const isHov = hovered?.id === a.id;
+
+                      return (
+                        <div key={a.id}
+                          style={{
+                            position: 'absolute', left: `${x}%`, top: `${y}%`, zIndex: isHov ? 50 : 10, cursor: 'pointer',
+                            animation: `pinDrop .3s cubic-bezier(.34,1.56,.64,1) ${Math.min(idx, 30) * 15}ms both`,
+                          }}
+                          onMouseEnter={e => { e.stopPropagation(); setHovered(a); }}
+                          onMouseLeave={() => setHovered(null)}
+                          onClick={e => e.stopPropagation()}>
+                          {a.is_operational && (
+                            <div style={{
+                              position: 'absolute', width: 10, height: 10, left: '50%', top: '50%', borderRadius: '50%',
+                              border: `1.5px solid ${color}`, animation: 'ringPulse 2.2s ease-out infinite',
+                            }} />
+                          )}
+                          <div style={{
+                            position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
+                            width: isHov ? 13 : a.is_operational ? 9 : 7,
+                            height: isHov ? 13 : a.is_operational ? 9 : 7,
+                            borderRadius: '50%', background: dotColor,
+                            border: `${isHov ? 2 : 1.5}px solid ${a.is_operational ? '#fff' : '#2a3a4a'}`,
+                            boxShadow: isHov ? `0 0 14px ${dotColor},0 0 6px #000` : a.is_operational ? `0 0 5px ${dotColor}70` : 'none',
+                            transition: 'all .15s',
+                          }} />
+                          {isHov && (
+                            <div style={{
+                              position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)',
+                              background: tooltipBg, border: `1px solid ${color}60`,
+                              borderRadius: 4, padding: '8px 12px', whiteSpace: 'nowrap',
+                              pointerEvents: 'none', animation: 'slideIn .1s ease',
+                              boxShadow: `0 6px 24px ${isDark ? '#000c' : '#0003'}, 0 0 0 1px ${color}20`,
+                              minWidth: 160,
+                            }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: textPrimary, marginBottom: 5 }}>{a.name}</div>
+                              <div style={{ display: 'flex', gap: 10 }}>
+                                <span style={{ fontSize: 8, color, letterSpacing: 0.5, textTransform: 'uppercase' }}>{cat}</span>
+                                <span style={{ fontSize: 8, color: a.is_operational ? '#10b981' : '#ef4444' }}>
+                                  {a.is_operational ? '● Operational' : '○ Not yet'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 7.5, color: textDim, marginTop: 4 }}>
+                                {a.lat?.toFixed(5)}°N, {a.lng?.toFixed(5)}°E
+                              </div>
+                              <div style={{
+                                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                                width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+                                borderTop: `6px solid ${color}60`,
+                              }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
+
+                {/* Community title overlay (both modes) */}
+                <div style={{ position: 'absolute', top: 12, left: 12, pointerEvents: 'none', animation: 'slideIn .4s ease', zIndex: 10 }}>
+                  <div style={{
+                    fontFamily: "'Barlow Condensed',sans-serif", fontSize: 24, fontWeight: 800, color: '#fff',
+                    letterSpacing: 2, textShadow: '0 2px 12px #000, 0 0 40px #00000090',
+                  }}>
+                    {selected.community_name.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,.55)', letterSpacing: 1, marginTop: 2, textShadow: '0 1px 6px #000' }}>
+                    {selected.developer} · {selected.source_confidence} CONFIDENCE
+                  </div>
+                </div>
 
                 {/* Geo bounds */}
-                {imgLoaded && (
-                  <div style={{
-                    position: 'absolute', bottom: 10, left: 12, background: overlayBg,
-                    border: `1px solid ${borderC}30`, borderRadius: 3, padding: '4px 8px', backdropFilter: 'blur(8px)', pointerEvents: 'none',
-                  }}>
-                    <div style={{ fontSize: 7, color: textDim }}>
-                      {selected.bbox_north.toFixed(4)}°N–{selected.bbox_south.toFixed(4)}°N · {selected.bbox_west.toFixed(4)}°E–{selected.bbox_east.toFixed(4)}°E
-                    </div>
+                <div style={{
+                  position: 'absolute', bottom: 10, left: 12, background: overlayBg,
+                  border: `1px solid ${borderC}30`, borderRadius: 3, padding: '4px 8px', backdropFilter: 'blur(8px)', pointerEvents: 'none', zIndex: 10,
+                }}>
+                  <div style={{ fontSize: 7, color: textDim }}>
+                    {selected.bbox_north.toFixed(4)}°N–{selected.bbox_south.toFixed(4)}°N · {selected.bbox_west.toFixed(4)}°E–{selected.bbox_east.toFixed(4)}°E
                   </div>
-                )}
+                </div>
 
                 {/* Legend */}
-                {imgLoaded && categories.length > 0 && (
+                {categories.length > 0 && (
                   <div style={{
                     position: 'absolute', bottom: 10, right: 12, background: overlayBg,
-                    border: `1px solid ${borderC}50`, borderRadius: 4, padding: '8px 10px', backdropFilter: 'blur(8px)', maxWidth: 170,
+                    border: `1px solid ${borderC}50`, borderRadius: 4, padding: '8px 10px', backdropFilter: 'blur(8px)', maxWidth: 170, zIndex: 10,
                   }}>
                     <div style={{ fontSize: 7.5, color: textDim, letterSpacing: 1, marginBottom: 5 }}>CATEGORIES</div>
                     {categories.slice(0, 10).map(cat => {
