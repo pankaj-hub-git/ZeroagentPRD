@@ -122,7 +122,7 @@ export function MacroTicker() {
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    const speed = 0.5;
+    const speed = 1.0;
 
     function animate() {
       if (!isPaused && container) {

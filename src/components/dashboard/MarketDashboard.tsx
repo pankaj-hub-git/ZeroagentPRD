@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import { useTheme, ThemeColors } from '@/lib/theme';
 
+const CHART_MARGIN = { top: 5, right: 5, bottom: 5, left: -10 };
+
 // ═══ Theme helper — maps ThemeColors to internal short names ═══
 function mkC(colors: ThemeColors) {
   return {
@@ -310,7 +312,7 @@ export function MarketDashboard() {
         </div>
         <Cd C={C} t="Monthly Sales Volume & Value">
           <ResponsiveContainer width="100%" height={260}>
-            <ComposedChart data={mkt}>
+            <ComposedChart data={mkt} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
               <YAxis yAxisId="l" tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={fmt} />
@@ -324,7 +326,7 @@ export function MarketDashboard() {
         </Cd>
         <Cd C={C} t="Price Per Sqft Trend">
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={mkt}>
+            <AreaChart data={mkt} margin={CHART_MARGIN}>
               <defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.gd} stopOpacity={0.2} /><stop offset="100%" stopColor={C.gd} stopOpacity={0} /></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
@@ -336,7 +338,7 @@ export function MarketDashboard() {
         </Cd>
         <Cd C={C} t="Quarterly Performance — Precomputed" sub="Complete quarters only, incomplete excluded">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={completeQoQ}>
+            <BarChart data={completeQoQ} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="quarter" tick={{ fill: C.dm, fontSize: 8 }} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={v => `${v}%`} />
@@ -364,7 +366,7 @@ export function MarketDashboard() {
         </div>
         <Cd C={C} t="Ready vs Off-Plan">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={mkt}>
+            <BarChart data={mkt} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={fmt} />
@@ -377,7 +379,7 @@ export function MarketDashboard() {
         </Cd>
         <Cd C={C} t="Apartments vs Villas">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={mkt}>
+            <BarChart data={mkt} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={fmt} />
@@ -390,7 +392,7 @@ export function MarketDashboard() {
         </Cd>
         <Cd C={C} t="Year-over-Year Sales Growth">
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={mkt}>
+            <BarChart data={mkt} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={v => `${v}%`} />
@@ -417,7 +419,7 @@ export function MarketDashboard() {
         </div>
         <Cd C={C} t="Monthly Rental Contracts">
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={mkt}>
+            <BarChart data={mkt} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={fmt} />
@@ -431,7 +433,7 @@ export function MarketDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Cd C={C} t="Yield by Bedrooms" sub="3-month rolling average">
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={yieldBR}>
+              <BarChart data={yieldBR} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
                 <XAxis dataKey="b" tick={{ fill: C.dm, fontSize: 9, fontFamily: "'IBM Plex Sans', sans-serif" }} />
                 <YAxis tick={{ fill: C.dm, fontSize: 9 }} domain={[0, 10]} tickFormatter={v => `${v}%`} />
@@ -444,7 +446,7 @@ export function MarketDashboard() {
           </Cd>
           <Cd C={C} t="Renewal Rate Trend">
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={mkt}>
+              <LineChart data={mkt} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
                 <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv12} />
                 <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={v => `${v}%`} />
@@ -549,7 +551,7 @@ export function MarketDashboard() {
         </Cd>
         <Cd C={C} t="Price YoY vs Volume YoY" sub="Last 15 months">
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={mkt.slice(-15)}>
+            <LineChart data={mkt.slice(-15)} margin={CHART_MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
               <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} />
               <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={v => `${v}%`} />
@@ -586,7 +588,7 @@ export function MarketDashboard() {
           </Cd>
           <Cd C={C} t="Bedroom Trend">
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={mkt}>
+              <BarChart data={mkt} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
                 <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv12} />
                 <YAxis tick={{ fill: C.dm, fontSize: 9 }} tickFormatter={fmt} />
@@ -604,7 +606,7 @@ export function MarketDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Cd C={C} t="Mortgage Ratio">
             <ResponsiveContainer width="100%" height={170}>
-              <AreaChart data={mkt}>
+              <AreaChart data={mkt} margin={CHART_MARGIN}>
                 <defs><linearGradient id="gM" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.am} stopOpacity={0.15} /><stop offset="100%" stopColor={C.am} stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
                 <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv10} />
@@ -616,7 +618,7 @@ export function MarketDashboard() {
           </Cd>
           <Cd C={C} t="Off-Plan Share">
             <ResponsiveContainer width="100%" height={170}>
-              <AreaChart data={mkt}>
+              <AreaChart data={mkt} margin={CHART_MARGIN}>
                 <defs><linearGradient id="gO" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.id} stopOpacity={0.2} /><stop offset="100%" stopColor={C.id} stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
                 <XAxis dataKey="metric_month" tick={{ fill: C.dm, fontSize: 7 }} tickFormatter={ml} interval={intv10} />

@@ -7,8 +7,6 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { MarketDashboard } from '@/components/dashboard/MarketDashboard';
-import { RERAFeedTab } from '@/components/dashboard/RERAFeedTab';
-import { DeveloperNewsTab } from '@/components/dashboard/DeveloperNewsTab';
 import { TransactionsFeedTab } from '@/components/dashboard/TransactionsFeedTab';
 import { TourismDashboard } from '@/components/dashboard/TourismDashboard';
 import { MacroTicker } from '@/components/dashboard/MacroTicker';
@@ -63,7 +61,7 @@ const SOURCE_STYLE: Record<string, { label: string; color: string }> = {
   policy: { label: 'POLICY', color: RED },
 };
 
-type Tab = 'feed' | 'dashboard' | 'transactions' | 'rera' | 'devnews' | 'tourism' | 'capital';
+type Tab = 'feed' | 'dashboard' | 'transactions' | 'tourism' | 'capital';
 
 function FeedCard({ item }: { item: FeedItem }) {
   const style = SOURCE_STYLE[item.source] ?? SOURCE_STYLE.policy;
@@ -285,8 +283,6 @@ export function HomePage() {
     { key: 'feed', label: 'Intelligence Feed' },
     { key: 'dashboard', label: 'Market Dashboard' },
     { key: 'transactions', label: 'Transactions' },
-    { key: 'rera', label: 'RERA Feed' },
-    { key: 'devnews', label: 'Developer News' },
     { key: 'tourism', label: 'Tourism' },
     { key: 'capital', label: 'Capital Rotation' },
   ];
@@ -334,10 +330,6 @@ export function HomePage() {
         {activeTab === 'dashboard' && <MarketDashboard />}
 
         {activeTab === 'transactions' && <TransactionsFeedTab />}
-
-        {activeTab === 'rera' && <RERAFeedTab />}
-
-        {activeTab === 'devnews' && <DeveloperNewsTab />}
 
         {activeTab === 'tourism' && <TourismDashboard />}
 
