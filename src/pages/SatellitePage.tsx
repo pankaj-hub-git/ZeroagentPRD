@@ -62,17 +62,52 @@ const CAT_COLORS: Record<string, string> = {
   lagoon: '#06b6d4', default: '#94a3b8',
 };
 
-/** Extract [lng, lat] from a PostGIS geom column (returned as GeoJSON by Supabase) */
-function extractPointCoords(row: R): [number, number] | null {
-  // PostGIS geometry columns come back as GeoJSON objects via PostgREST
-  const g = row.geom ?? row.geometry ?? row.the_geom;
-  if (g && typeof g === 'object' && g.type === 'Point' && Array.isArray(g.coordinates)) {
-    return [g.coordinates[0], g.coordinates[1]]; // [lng, lat]
+/** Try to parse a geometry value from any format PostGIS/PostgREST may return */
+function parseGeometry(val: unknown): R | null {
+  if (!val) return null;
+  // Already a GeoJSON object
+  if (typeof val === 'object' && val !== null && 'type' in (val as R)) return val as R;
+  // GeoJSON string
+  if (typeof val === 'string') {
+    // Could be GeoJSON string
+    if (val.startsWith('{')) {
+      try { return JSON.parse(val); } catch { /* not JSON */ }
+    }
+    // WKB hex string (starts with 01 for little-endian) — we can't parse client-side easily
+    // Just log it so we know
+    if (/^[0-9a-fA-F]+$/.test(val) && val.length > 20) {
+      console.warn('[Satellite] Got WKB hex geometry — need ST_AsGeoJSON on server side. Length:', val.length);
+    }
   }
-  // Fallback: check for explicit lat/lng columns
-  const lat = row.lat ?? row.latitude;
-  const lng = row.lng ?? row.longitude ?? row.lon;
-  if (lat != null && lng != null) return [Number(lng), Number(lat)];
+  return null;
+}
+
+/** Extract [lng, lat] from a row that may contain PostGIS geom data */
+function extractPointCoords(row: R): [number, number] | null {
+  // Try geometry columns
+  for (const col of ['geom', 'geometry', 'the_geom', 'wkb_geometry', 'centroid']) {
+    const geo = parseGeometry(row[col]);
+    if (geo?.type === 'Point' && Array.isArray(geo.coordinates)) {
+      return [geo.coordinates[0], geo.coordinates[1]];
+    }
+  }
+  // Fallback: explicit lat/lng columns
+  const lat = row.lat ?? row.latitude ?? row.y;
+  const lng = row.lng ?? row.longitude ?? row.lon ?? row.x;
+  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    return [Number(lng), Number(lat)];
+  }
+  return null;
+}
+
+/** Extract polygon geometry from a row */
+function extractPolygon(row: R): R | null {
+  for (const col of ['boundary', 'geom', 'geometry', 'the_geom', 'polygon', 'shape', 'hull', 'wkb_geometry']) {
+    const geo = parseGeometry(row[col]);
+    if (geo && (geo.type === 'Polygon' || geo.type === 'MultiPolygon' || geo.type === 'Feature' || geo.type === 'FeatureCollection')) {
+      return geo;
+    }
+  }
   return null;
 }
 
@@ -105,12 +140,71 @@ export function SatellitePage() {
   const [boundaryGeoJSON, setBoundaryGeoJSON] = useState<GeoJSONFC | null>(null);
   const mapboxRef = useRef<MapRef>(null);
 
-  // Refresh community list from live DB, then count amenities per community
+  // Cache for all amenity rows (fetched once, reused across community selections)
+  const amenityCacheRef = useRef<R[] | null>(null);
+  // Cache for layers.communities rows (fetched once for boundary lookup)
+  const communityCacheRef = useRef<R[] | null>(null);
+
+  // ─── Schema discovery + community list load ───
   useEffect(() => {
     (async () => {
       try {
         const seedMap = new Map(SEED_COMMUNITIES.map(s => [s.community_key, s.amenity_count]));
 
+        // 1) Discover layers.communities schema (log columns + sample row)
+        const { data: comSample, error: comSampleErr } = await layers().from('communities')
+          .select('*').limit(5);
+        if (comSampleErr) {
+          console.error('[Satellite] layers.communities FAILED:', comSampleErr.message);
+        } else if (comSample?.length) {
+          console.log('[Satellite] layers.communities columns:', Object.keys(comSample[0]));
+          console.log('[Satellite] layers.communities sample row:', JSON.stringify(comSample[0], null, 2).slice(0, 500));
+          // Check value types for geometry columns
+          for (const col of Object.keys(comSample[0])) {
+            const val = (comSample[0] as R)[col];
+            if (val && typeof val === 'object' && 'type' in val) {
+              console.log(`[Satellite] layers.communities.${col} is GeoJSON:`, val.type);
+            } else if (val && typeof val === 'string' && val.length > 50) {
+              console.log(`[Satellite] layers.communities.${col} is long string (${val.length} chars):`, val.slice(0, 80));
+            }
+          }
+          communityCacheRef.current = comSample as R[];
+          // Fetch ALL community rows for boundary lookups later
+          if (comSample.length === 5) {
+            const { data: allCom } = await layers().from('communities').select('*').limit(500);
+            if (allCom?.length) communityCacheRef.current = allCom as R[];
+          }
+        }
+
+        // 2) Discover layers.amenities schema
+        const { data: amSample, error: amSampleErr } = await layers().from('amenities')
+          .select('*').limit(3);
+        if (amSampleErr) {
+          console.error('[Satellite] layers.amenities FAILED:', amSampleErr.message);
+          // Try bronze.community_amenities
+          const { data: baSample, error: baErr } = await bronze().from('community_amenities')
+            .select('*').limit(3);
+          if (baErr) {
+            console.error('[Satellite] bronze.community_amenities FAILED:', baErr.message);
+          } else if (baSample?.length) {
+            console.log('[Satellite] bronze.community_amenities columns:', Object.keys(baSample[0]));
+            console.log('[Satellite] bronze.community_amenities sample:', JSON.stringify(baSample[0], null, 2).slice(0, 500));
+          }
+        } else if (amSample?.length) {
+          console.log('[Satellite] layers.amenities columns:', Object.keys(amSample[0]));
+          console.log('[Satellite] layers.amenities sample row:', JSON.stringify(amSample[0], null, 2).slice(0, 500));
+          // Check each column for geometry
+          for (const col of Object.keys(amSample[0])) {
+            const val = (amSample[0] as R)[col];
+            if (val && typeof val === 'object' && 'type' in val) {
+              console.log(`[Satellite] layers.amenities.${col} is GeoJSON:`, val.type);
+            } else if (val && typeof val === 'string' && val.length > 50) {
+              console.log(`[Satellite] layers.amenities.${col} is long string (${val.length} chars):`, val.slice(0, 80));
+            }
+          }
+        }
+
+        // 3) Load community list from masterplan_images
         const { data, error } = await bronze().from('masterplan_images')
           .select('community_key, community_name, developer, image_url, bbox_west, bbox_south, bbox_east, bbox_north, source_confidence')
           .order('community_name', { ascending: true });
@@ -131,25 +225,54 @@ export function SatellitePage() {
           }));
           setCommunities(comms);
 
-          // Count amenities per community — fetch all amenities once, then count by bbox
+          // 4) Fetch ALL amenity rows once for counting + later pin display
           try {
-            const { data: allAmenities, error: amErr } = await layers().from('amenities')
-              .select('geom')
-              .limit(5000);
-            if (!amErr && allAmenities?.length) {
+            let allRows: R[] = [];
+            // Try layers.amenities first
+            const { data: amAll, error: amAllErr } = await layers().from('amenities')
+              .select('*').limit(10000);
+            if (!amAllErr && amAll?.length) {
+              allRows = amAll as R[];
+              console.log(`[Satellite] Loaded ${allRows.length} amenity rows from layers.amenities`);
+            } else {
+              console.warn('[Satellite] layers.amenities fetch all failed:', amAllErr?.message);
+              // Fallback: bronze.community_amenities
+              const { data: baAll, error: baAllErr } = await bronze().from('community_amenities')
+                .select('*').limit(10000);
+              if (!baAllErr && baAll?.length) {
+                allRows = baAll as R[];
+                console.log(`[Satellite] Loaded ${allRows.length} amenity rows from bronze.community_amenities`);
+              } else {
+                console.warn('[Satellite] bronze.community_amenities fetch all failed:', baAllErr?.message);
+              }
+            }
+
+            if (allRows.length) {
+              amenityCacheRef.current = allRows;
+
+              // Count how many have extractable coords
+              let coordCount = 0;
+              for (const r of allRows.slice(0, 10)) {
+                const c = extractPointCoords(r);
+                if (c) coordCount++;
+                else console.log('[Satellite] Could NOT extract coords from row:', JSON.stringify(r, null, 2).slice(0, 300));
+              }
+              console.log(`[Satellite] Coord extraction: ${coordCount}/10 sample rows have valid coords`);
+
+              // Count per community
               const countMap = new Map<string, number>();
-              for (const c of comms) {
+              for (const com of comms) {
                 let count = 0;
-                for (const a of allAmenities) {
-                  const row = a as R;
-                  const coords = extractPointCoords(row);
-                  if (coords && coords[0] >= c.bbox_west && coords[0] <= c.bbox_east
-                    && coords[1] >= c.bbox_south && coords[1] <= c.bbox_north) {
+                for (const a of allRows) {
+                  const coords = extractPointCoords(a);
+                  if (coords && coords[0] >= com.bbox_west && coords[0] <= com.bbox_east
+                    && coords[1] >= com.bbox_south && coords[1] <= com.bbox_north) {
                     count++;
                   }
                 }
-                countMap.set(c.community_key, count);
+                if (count > 0) countMap.set(com.community_key, count);
               }
+              console.log('[Satellite] Amenity counts by community:', Object.fromEntries(countMap));
               setCommunities(prev => prev.map(c => ({
                 ...c,
                 amenity_count: countMap.get(c.community_key) ?? c.amenity_count,
@@ -165,80 +288,69 @@ export function SatellitePage() {
     })();
   }, []);
 
-  /** Fetch community boundary polygon from layers.communities.boundary */
-  const fetchBoundary = async (com: Community) => {
-    try {
-      // layers.communities has: boundary (polygon), centroid (point)
-      const { data, error } = await layers().from('communities')
-        .select('community_key, boundary')
-        .eq('community_key', com.community_key)
-        .limit(1)
-        .single();
-
-      if (!error && data) {
-        const row = data as R;
-        const geo = row.boundary;
-        if (geo && typeof geo === 'object') {
-          // PostGIS returns geometry as GeoJSON object via PostgREST
-          if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
-            setBoundaryGeoJSON({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
-            });
-            return;
-          }
-          if (geo.type === 'Feature') {
-            setBoundaryGeoJSON({ type: 'FeatureCollection', features: [geo] });
-            return;
-          }
-          if (geo.type === 'FeatureCollection') {
-            setBoundaryGeoJSON(geo);
-            return;
-          }
-        }
-        // boundary might be a GeoJSON string
-        if (geo && typeof geo === 'string') {
-          try {
-            const parsed = JSON.parse(geo);
-            if (parsed.type === 'Polygon' || parsed.type === 'MultiPolygon') {
-              setBoundaryGeoJSON({
-                type: 'FeatureCollection',
-                features: [{ type: 'Feature', geometry: parsed, properties: { name: com.community_name } }],
-              });
-              return;
-            }
-          } catch { /* not JSON */ }
-        }
-      }
-
-      // Fallback: try matching by community_name
-      if (error) {
-        console.warn('[Satellite] boundary by key failed:', error.message);
-        const { data: nameData } = await layers().from('communities')
-          .select('*')
-          .ilike('community_name', `%${com.community_name}%`)
-          .limit(1);
-        if (nameData?.[0]) {
-          const row = nameData[0] as R;
-          // Scan all columns for polygon geometry
-          for (const key of Object.keys(row)) {
-            const val = row[key];
-            if (val && typeof val === 'object' && (val.type === 'Polygon' || val.type === 'MultiPolygon')) {
-              setBoundaryGeoJSON({
-                type: 'FeatureCollection',
-                features: [{ type: 'Feature', geometry: val, properties: { name: com.community_name } }],
-              });
-              return;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Satellite] boundary fetch failed:', e);
+  /** Find boundary polygon for a community from cached layers.communities data */
+  const fetchBoundary = useCallback(async (com: Community) => {
+    const cache = communityCacheRef.current;
+    if (!cache?.length) {
+      console.warn('[Satellite] No community cache for boundary lookup');
+      setBoundaryGeoJSON(null);
+      return;
     }
-    // Fallback to bbox rectangle
-    setBoundaryGeoJSON(null);
-  };
+
+    // Try matching by various key columns
+    const keyNorm = com.community_key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameNorm = com.community_name.toLowerCase();
+
+    let matchRow: R | null = null;
+    for (const row of cache) {
+      // Try exact community_key match
+      if (row.community_key && String(row.community_key).toUpperCase() === com.community_key) {
+        matchRow = row;
+        break;
+      }
+      // Try normalized key match
+      if (row.community_key && String(row.community_key).toLowerCase().replace(/[^a-z0-9]/g, '') === keyNorm) {
+        matchRow = row;
+        break;
+      }
+      // Try name match
+      const rName = (row.community_name || row.name || '').toLowerCase();
+      if (rName === nameNorm || rName.includes(nameNorm) || nameNorm.includes(rName)) {
+        matchRow = row;
+        break;
+      }
+    }
+
+    if (!matchRow) {
+      console.warn(`[Satellite] No boundary match for "${com.community_key}" / "${com.community_name}". Available keys:`,
+        cache.slice(0, 5).map(r => r.community_key || r.name || r.id));
+      setBoundaryGeoJSON(null);
+      return;
+    }
+
+    console.log('[Satellite] Boundary match found:', matchRow.community_key || matchRow.name || matchRow.id);
+
+    // Extract polygon from matched row
+    const geo = extractPolygon(matchRow);
+    if (geo) {
+      let fc: GeoJSONFC;
+      if (geo.type === 'FeatureCollection') {
+        fc = geo as GeoJSONFC;
+      } else if (geo.type === 'Feature') {
+        fc = { type: 'FeatureCollection', features: [geo] };
+      } else {
+        fc = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }] };
+      }
+      console.log('[Satellite] Boundary polygon type:', geo.type);
+      setBoundaryGeoJSON(fc);
+    } else {
+      console.warn('[Satellite] Matched row but no polygon geometry found. Columns with values:',
+        Object.entries(matchRow).filter(([, v]) => v != null).map(([k, v]) =>
+          `${k}: ${typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : typeof v === 'string' && v.length > 30 ? `string(${v.length})` : v}`
+        ));
+      setBoundaryGeoJSON(null);
+    }
+  }, []);
 
   const loadCommunity = async (com: Community) => {
     setSelected(com);
@@ -250,73 +362,43 @@ export function SatellitePage() {
     setPopupAmenity(null);
     setStatus('Fetching amenities...');
 
-    // Fetch boundary and amenities in parallel
-    const [amenityResult] = await Promise.all([
-      fetchAmenities(com),
-      fetchBoundary(com),
-    ]);
-    setAmenities(amenityResult.amenities);
-    setStatus(amenityResult.status);
+    // Boundary from cache
+    fetchBoundary(com);
+
+    // Amenities from cache (or re-fetch)
+    const result = processAmenityRows(com);
+    setAmenities(result.amenities);
+    setStatus(result.status);
     setLoading(false);
   };
 
-  const fetchAmenities = async (com: Community): Promise<{ amenities: Amenity[]; status: string }> => {
-    try {
-      // layers.amenities uses PostGIS geom column — fetch all columns, filter by bbox client-side
-      // because PostgREST doesn't support spatial queries like ST_Within
-      const { data, error } = await layers().from('amenities')
-        .select('*')
-        .limit(5000);
-
-      if (error) {
-        console.error('[Satellite] amenities query error:', error.message);
-
-        // Fallback: try bronze.community_amenities which also has geom
-        const { data: bData, error: bErr } = await bronze().from('community_amenities')
-          .select('*')
-          .limit(5000);
-        if (!bErr && bData?.length) {
-          console.log('[Satellite] Using bronze.community_amenities fallback, columns:', Object.keys(bData[0]));
-          return processAmenityRows(bData, com);
-        }
-
-        return { amenities: [], status: `${com.amenity_count} amenities (seed) · ${com.community_name}` };
-      }
-
-      if (data?.length) {
-        console.log('[Satellite] layers.amenities columns:', Object.keys(data[0]));
-        return processAmenityRows(data, com);
-      }
-
-      return { amenities: [], status: `0 amenities · ${com.community_name}` };
-    } catch (e) {
-      console.error('[Satellite] Failed to load amenities:', e);
+  /** Extract amenities from cache, filtered by community bbox */
+  const processAmenityRows = (com: Community): { amenities: Amenity[]; status: string } => {
+    const rows = amenityCacheRef.current;
+    if (!rows?.length) {
+      console.warn('[Satellite] No amenity cache available');
       return { amenities: [], status: `${com.amenity_count} amenities (seed) · ${com.community_name}` };
     }
-  };
 
-  /** Process raw amenity rows — extract coords from geom, filter by community bbox */
-  const processAmenityRows = (data: R[], com: Community): { amenities: Amenity[]; status: string } => {
     const amenityData: Amenity[] = [];
-    for (let i = 0; i < data.length; i++) {
-      const a = data[i] as R;
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i];
       const coords = extractPointCoords(a);
       if (!coords) continue;
       const [lng, lat] = coords;
-      // Filter by community bbox
       if (lng < com.bbox_west || lng > com.bbox_east || lat < com.bbox_south || lat > com.bbox_north) continue;
 
       amenityData.push({
         id: a.id ?? i,
         name: a.name || a.amenity_name || a.title || 'Unknown',
-        amenity_type: a.amenity_type || a.type || '',
+        amenity_type: a.amenity_type || a.type || a.amenity_class || '',
         amenity_category: a.amenity_category || a.category || '',
-        is_operational: a.is_operational != null ? Boolean(a.is_operational) : (a.status === 'OPEN' || a.status === 'operational' || true),
+        is_operational: a.is_operational != null ? Boolean(a.is_operational) : true,
         lat,
         lng,
       });
     }
-    console.log(`[Satellite] ${amenityData.length} amenities in ${com.community_name} bbox (from ${data.length} total)`);
+    console.log(`[Satellite] ${amenityData.length} amenities in ${com.community_name} bbox`);
     return { amenities: amenityData, status: `${amenityData.length} amenities · ${com.community_name}` };
   };
 
