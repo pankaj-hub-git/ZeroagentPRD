@@ -171,6 +171,7 @@ export function ProjectsPage() {
   const [dldRecent, setDldRecent] = useState<R[]>([]);
   const [dldSummary, setDldSummary] = useState<R[]>([]);
   const [ejari, setEjari] = useState<R[]>([]);
+  const [viewBlocking, setViewBlocking] = useState<R[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +184,7 @@ export function ProjectsPage() {
           .not('avg_price_per_sqft', 'is', null)
           .not('orientation_primary', 'is', null)
           .order('avg_price_per_sqft', { ascending: false })
-          .limit(50);
+          .limit(100);
         if (err) {
           console.error('[Projects] xray_projects error:', err.message);
           setError(err.message);
@@ -230,6 +231,22 @@ export function ProjectsPage() {
         } else {
           setDldRecent([]); setDldSummary([]); setEjari([]);
         }
+        // View blocking via community mapping
+        const vbMap: Record<string, string> = {
+          'Downtown Dubai': 'BURJ KHALIFA DISTRICT', 'Business Bay': 'BUSINESS BAY PHASE 1 & 2',
+          'Dubai Hills Estate': 'DUBAI HILLS', 'Arabian Ranches III': 'ARABIAN RANCHES III',
+          'City Walk': 'City Walk', 'DIFC': 'DUBAI INTERNATIONAL FINANCIAL CENTER',
+        };
+        const vbKey = vbMap[sel.master_community];
+        if (vbKey) {
+          const { data: vb, error: vbErr } = await sb.from('xray_view_blocking')
+            .select('*').eq('observer_project', vbKey)
+            .order('risk_score', { ascending: false }).limit(20);
+          if (vbErr) console.error('[Projects] xray_view_blocking:', vbErr.message);
+          setViewBlocking(vb || []);
+        } else {
+          setViewBlocking([]);
+        }
       } catch (e) {
         console.error('[Projects] Detail load error:', e);
       }
@@ -266,6 +283,7 @@ export function ProjectsPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'units', label: 'Units & Pricing' },
     ...(isApt || isOffplan ? [{ key: 'orientation', label: 'Orientation' }] : []),
+    ...(isApt || isOffplan ? [{ key: 'viewblock', label: 'View Blocking' }] : []),
     ...(isVilla ? [{ key: 'community', label: 'Community Intel' }] : []),
     ...(isOffplan ? [{ key: 'offplan', label: 'Construction Status' }] : []),
     { key: 'evidence', label: 'DLD Evidence' },
@@ -512,6 +530,78 @@ export function ProjectsPage() {
                     </div>
                   )}
 
+                  {/* VIEW BLOCKING */}
+                  {tab === 'viewblock' && (
+                    <div>
+                      <Section title="View Blocking Analysis" subtitle="Nearby buildings that may obstruct views — from GIS + satellite analysis" accent colors={colors}>
+                        {viewBlocking.length === 0 ? (
+                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>
+                            View blocking data not available for {sel.master_community}. Currently covers: Downtown, Business Bay, Dubai Hills, Arabian Ranches III, City Walk, DIFC.
+                          </div></PCard>
+                        ) : (
+                          <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                              <PCard colors={colors}>
+                                <div className="za-data-label">THREATS DETECTED</div>
+                                <div style={{ fontSize: 28, fontWeight: 300, color: isDark ? '#FBBF24' : '#D4850A' }}>{viewBlocking.length}</div>
+                                <div style={{ fontSize: 10, color: colors.textSecondary }}>blocking risks in area</div>
+                              </PCard>
+                              <PCard colors={colors}>
+                                <div className="za-data-label">HIGHEST RISK</div>
+                                <div style={{ fontSize: 28, fontWeight: 300, color: viewBlocking[0]?.risk_score > 70 ? colors.red : viewBlocking[0]?.risk_score > 40 ? colors.orange : colors.green }}>{viewBlocking[0]?.risk_score || 0}</div>
+                                <div style={{ fontSize: 10, color: colors.textSecondary }}>{viewBlocking[0]?.risk_label || '—'}</div>
+                              </PCard>
+                              <PCard colors={colors}>
+                                <div className="za-data-label">SAFE ABOVE FLOOR</div>
+                                <div style={{ fontSize: 28, fontWeight: 300, color: colors.green }}>{viewBlocking[0]?.min_safe_floor || sel.apt_best_floor_range || '—'}</div>
+                                <div style={{ fontSize: 10, color: colors.textSecondary }}>for unobstructed views</div>
+                              </PCard>
+                            </div>
+                            {viewBlocking.slice(0, 10).map((vb: R, i: number) => (
+                              <PCard key={i} colors={colors} style={{ marginBottom: 8 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                  <div>
+                                    <div style={{ fontSize: 14, fontWeight: 500, color: colors.text }}>{vb.blocker_name}</div>
+                                    <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>
+                                      {vb.blocker_distance_m}m away · {vb.blocker_floors} floors · {vb.blocker_direction}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <Badge color={vb.risk_score > 70 ? colors.red : vb.risk_score > 40 ? colors.orange : colors.green} label={vb.risk_label || `RISK: ${vb.risk_score}`} />
+                                    <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>{vb.blocker_status}</div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+                                  <div style={{ padding: 6, background: colors.bg, borderRadius: 3, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 8, color: colors.textDim }}>BLOCKED</div>
+                                    <div style={{ fontSize: 14, color: vb.pct_blocked > 30 ? colors.red : vb.pct_blocked > 15 ? colors.orange : colors.green }}>{vb.pct_blocked}%</div>
+                                  </div>
+                                  <div style={{ padding: 6, background: colors.bg, borderRadius: 3, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 8, color: colors.textDim }}>SEVERITY</div>
+                                    <div style={{ fontSize: 11, color: vb.block_severity === 'critical' ? colors.red : vb.block_severity === 'major' ? colors.orange : colors.green }}>{vb.block_severity?.toUpperCase()}</div>
+                                  </div>
+                                  <div style={{ padding: 6, background: colors.bg, borderRadius: 3, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 8, color: colors.textDim }}>VIEW AT RISK</div>
+                                    <div style={{ fontSize: 11, color: colors.gold }}>{vb.view_name}</div>
+                                  </div>
+                                  <div style={{ padding: 6, background: colors.bg, borderRadius: 3, textAlign: 'center' }}>
+                                    <div style={{ fontSize: 8, color: colors.textDim }}>SAFE FLOOR</div>
+                                    <div style={{ fontSize: 14, color: colors.green }}>{vb.safe_above_floor || vb.min_safe_floor || '—'}</div>
+                                  </div>
+                                </div>
+                                {vb.view_salvageable === false && (
+                                  <div style={{ marginTop: 6, padding: 4, background: colors.red + '0a', borderRadius: 3, border: `1px solid ${colors.red}22` }}>
+                                    <span style={{ fontSize: 9, color: colors.red }}>VIEW NOT SALVAGEABLE — permanently blocked regardless of floor</span>
+                                  </div>
+                                )}
+                              </PCard>
+                            ))}
+                          </>
+                        )}
+                      </Section>
+                    </div>
+                  )}
+
                   {/* COMMUNITY INTEL (Villas) */}
                   {tab === 'community' && isVilla && (
                     <div>
@@ -655,6 +745,7 @@ export function ProjectsPage() {
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: 12, color: colors.green }}>{amenities.filter((a: R) => a.delivery_status === 'fully_delivered').length} fully delivered</div>
+                            <div style={{ fontSize: 12, color: colors.blue }}>{amenities.filter((a: R) => a.delivery_status === 'planned').length} planned</div>
                             <div style={{ fontSize: 12, color: colors.orange }}>{amenities.filter((a: R) => a.delivery_status === 'pending_verification').length} pending</div>
                           </div>
                         </PCard>
@@ -665,6 +756,7 @@ export function ProjectsPage() {
                             <div>
                               <span style={{ fontSize: 12, color: colors.text }}>{a.amenity_name}</span>
                               <span style={{ fontSize: 10, color: colors.textDim, marginLeft: 8 }}>{a.amenity_category}</span>
+                              {a.community_sentiment_score && <span style={{ fontSize: 10, color: colors.gold, marginLeft: 8 }}>Sentiment: {Number(a.community_sentiment_score).toFixed(1)}/5</span>}
                             </div>
                             <Badge
                               color={a.delivery_status === 'fully_delivered' || a.delivery_status === 'exceeded' ? colors.green : a.delivery_status === 'pending_verification' || a.delivery_status === 'partially_delivered' ? colors.orange : colors.red}
@@ -695,49 +787,81 @@ export function ProjectsPage() {
                     <div>
                       <Section title="What They Don't Tell You" subtitle="The honest things no marketing brochure includes" accent colors={colors}>
                         <PCard colors={colors} style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Service Charge Reality</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 20 }}>{'💰'}</span>
+                            <span style={{ fontSize: 15, fontWeight: 500 }}>Service Charge Reality</span>
+                          </div>
                           {sel.sc_source === 'mollak_confirmed' ? (
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
                               Mollak confirmed SC: AED {Number(sel.service_charge_per_sqft).toFixed(1)}/sqft ({sel.service_charge_year}).
-                              Service charges typically increase 3-5% annually. On a {sel.size_range_sqft_min || 1000} sqft unit, that's
-                              AED {fmt(Math.round((sel.service_charge_per_sqft || 0) * (sel.size_range_sqft_min || 1000)))}/year today.
+                              {sel.sc_year_1 && ` First year recorded: AED ${Number(sel.sc_year_1).toFixed(1)}/sqft (${sel.sc_year_1_yr}).`}
+                              {' '}Service charges typically increase 3-5% annually. On a {sel.size_range_sqft_min || 1000} sqft unit, that's
+                              AED {fmt(Math.round((sel.service_charge_per_sqft || 0) * (sel.size_range_sqft_min || 1000)))}/year today. Factor this into yield calculations.
                             </div>
                           ) : sel.sc_source === 'rera_estimate' ? (
                             <div style={{ fontSize: 12, color: colors.orange, lineHeight: 1.7 }}>
-                              No Mollak SC yet — off-plan project. RERA placeholder: ~AED {Number(sel.offplan_estimated_sc).toFixed(1)}/sqft. Expect ±30% variance.
+                              No Mollak SC available yet — this is an off-plan project. RERA placeholder estimate: ~AED {Number(sel.offplan_estimated_sc).toFixed(1)}/sqft.
+                              Actual SC will only be known after handover. Expect ±30% variance from estimate.
                             </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.7 }}>Service charge data not yet available.</div>
+                            <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.7 }}>Service charge data not yet available for this project.</div>
                           )}
                         </PCard>
 
                         {(isApt || isOffplan) && sel.apt_worst_direction && (
                           <PCard colors={colors} style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Direction & Noise</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 20 }}>{'🔊'}</span>
+                              <span style={{ fontSize: 15, fontWeight: 500 }}>Direction & Noise</span>
+                            </div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
-                              Caution: {sel.apt_worst_direction}. Best: {sel.apt_best_direction}.
-                              {sel.apt_view_premium_pct ? ` View premium ~${sel.apt_view_premium_pct}%.` : ''}
+                              Caution direction: {sel.apt_worst_direction}. {sel.apt_noise_floor_threshold ? `Noise attenuates significantly above floor ${sel.apt_noise_floor_threshold}.` : ''}
+                              {' '}Best direction: {sel.apt_best_direction}. {sel.apt_view_premium_pct ? `The view premium between best and worst direction is approximately ${sel.apt_view_premium_pct}%.` : ''}
+                              {' '}If you're noise-sensitive, avoid lower floors on the highway side — but you'll get a measurable discount.
+                            </div>
+                          </PCard>
+                        )}
+
+                        {isVilla && sel.villa_highway_distance_m && (
+                          <PCard colors={colors} style={{ marginBottom: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 20 }}>{'🛣️'}</span>
+                              <span style={{ fontSize: 15, fontWeight: 500 }}>Highway & Noise</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
+                              {sel.villa_highway_name} is {sel.villa_highway_distance_m}m away. Noise risk: {sel.villa_highway_noise_risk}.
+                              {sel.villa_highway_noise_risk === 'moderate' ? ' Perimeter villas closest to the highway will hear traffic, especially at night. Interior plots are significantly quieter.' : ' Distance is sufficient for minimal noise impact on most plots.'}
                             </div>
                           </PCard>
                         )}
 
                         {isOffplan && (
                           <PCard colors={colors} style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Delivery Risk</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 20 }}>{'⏳'}</span>
+                              <span style={{ fontSize: 15, fontWeight: 500 }}>Delivery Risk</span>
+                            </div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
-                              {sel.developer}'s avg delay: {sel.offplan_developer_delay_history_months || 'unknown'} months. Handover: {sel.offplan_expected_handover?.slice(0, 7) || 'TBD'}.
+                              {sel.developer}'s average historical delay is {sel.offplan_developer_delay_history_months || 'unknown'} months.
+                              Expected handover: {sel.offplan_expected_handover?.slice(0, 7) || 'TBD'}.
+                              {sel.offplan_developer_delay_history_months > 6 ? ' This developer has a history of delays. Budget an extra 6-12 months beyond the stated date.' : ' This developer has a reasonable delivery track record.'}
+                              {' '}Your capital is locked during construction with no rental income. Factor the opportunity cost.
                             </div>
                           </PCard>
                         )}
 
                         {ejari.length > 0 && (
                           <PCard colors={colors} style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Rental Spread</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 20 }}>{'📊'}</span>
+                              <span style={{ fontSize: 15, fontWeight: 500 }}>Rental Spread</span>
+                            </div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
                               {ejari.map((e: R) => {
                                 const spread = e.max_rent && e.min_rent ? Math.round(((e.max_rent - e.min_rent) / e.min_rent) * 100) : 0;
-                                return `${e.unit_type}: AED ${fmt(e.min_rent)}–${fmt(e.max_rent)}/yr (${spread}% spread, ${e.contract_count} contracts). `;
+                                return `${e.unit_type}: AED ${fmt(e.min_rent)} to ${fmt(e.max_rent)}/yr (${spread}% spread across ${e.contract_count} contracts). `;
                               }).join('')}
+                              The ONLY variables are floor and orientation. The unit you pick matters more than the building you pick.
                             </div>
                           </PCard>
                         )}
@@ -746,7 +870,13 @@ export function ProjectsPage() {
                       <div className="za-signal-box za-signal-box--gold" style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2, color: colors.gold, fontFamily: FONT_DATA, marginBottom: 6 }}>DATA SOURCES</div>
                         <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.6 }}>
-                          DLD ({fmt(dldRecent.length)} recent) · Ejari ({ejari.reduce((a: number, e: R) => a + e.contract_count, 0)} contracts) · Mollak ({sel.sc_source})
+                          Transactions: DLD ({fmt(dldRecent.length)} recent).
+                          Rentals: Ejari ({ejari.reduce((a: number, e: R) => a + e.contract_count, 0)} contracts).
+                          Service charges: Mollak ({sel.sc_source}).
+                          Amenities: community sentiment verified.
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 11, color: colors.gold, fontStyle: 'italic' }}>
+                          Every number in this document can be independently verified. That's the point.
                         </div>
                       </div>
                     </div>
