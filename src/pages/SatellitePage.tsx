@@ -8,6 +8,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type R = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GeoJSONFC = { type: 'FeatureCollection'; features: any[] };
 
 interface Community {
   community_key: string;
@@ -60,10 +62,16 @@ const CAT_COLORS: Record<string, string> = {
   lagoon: '#06b6d4', default: '#94a3b8',
 };
 
-function toPercent(lat: number, lng: number, c: Community) {
+/** Build bbox rectangle GeoJSON as fallback when no real polygon available */
+function bboxToPolygon(c: Community): GeoJSONFC {
+  const { bbox_west: w, bbox_south: s, bbox_east: e, bbox_north: n } = c;
   return {
-    x: ((lng - c.bbox_west) / (c.bbox_east - c.bbox_west)) * 100,
-    y: ((c.bbox_north - lat) / (c.bbox_north - c.bbox_south)) * 100,
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]] },
+      properties: { name: c.community_name },
+    }],
   };
 }
 
@@ -75,22 +83,18 @@ export function SatellitePage() {
   const [selected, setSelected] = useState<Community | null>(null);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [loading, setLoading] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
   const [status, setStatus] = useState('Select a community');
-  const [hovered, setHovered] = useState<Amenity | null>(null);
   const [filterCat, setFilterCat] = useState('all');
   const [filterOp, setFilterOp] = useState('all');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'masterplan' | 'mapbox'>('masterplan');
   const [popupAmenity, setPopupAmenity] = useState<Amenity | null>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
+  const [boundaryGeoJSON, setBoundaryGeoJSON] = useState<GeoJSONFC | null>(null);
   const mapboxRef = useRef<MapRef>(null);
 
   // Refresh community list from live DB, then count amenities per community
   useEffect(() => {
     (async () => {
       try {
-        // Build seed lookup for fallback amenity_count
         const seedMap = new Map(SEED_COMMUNITIES.map(s => [s.community_key, s.amenity_count]));
 
         const { data, error } = await bronze().from('masterplan_images')
@@ -113,22 +117,25 @@ export function SatellitePage() {
           }));
           setCommunities(comms);
 
-          // Count amenities per community from layers.amenities in parallel
+          // Count amenities per community in parallel
           const countPromises = comms.map(async (c) => {
             try {
-              // Try lat/lng columns first, fall back to latitude/longitude
-              let res = await layers().from('amenities')
-                .select('id', { count: 'exact', head: true })
-                .gte('lat', c.bbox_south).lte('lat', c.bbox_north)
-                .gte('lng', c.bbox_west).lte('lng', c.bbox_east);
-              if (res.error) {
-                // Try alternate column names
-                res = await layers().from('amenities')
-                  .select('id', { count: 'exact', head: true })
+              // Try multiple column name patterns
+              const queries = [
+                layers().from('amenities').select('id', { count: 'exact', head: true })
+                  .gte('lat', c.bbox_south).lte('lat', c.bbox_north)
+                  .gte('lng', c.bbox_west).lte('lng', c.bbox_east),
+                layers().from('amenities').select('id', { count: 'exact', head: true })
                   .gte('latitude', c.bbox_south).lte('latitude', c.bbox_north)
-                  .gte('longitude', c.bbox_west).lte('longitude', c.bbox_east);
+                  .gte('longitude', c.bbox_west).lte('longitude', c.bbox_east),
+              ];
+              for (const q of queries) {
+                const res = await q;
+                if (!res.error && res.count !== null) {
+                  return { key: c.community_key, count: res.count };
+                }
               }
-              return { key: c.community_key, count: res.count ?? (seedMap.get(c.community_key) ?? 0) };
+              return { key: c.community_key, count: seedMap.get(c.community_key) ?? 0 };
             } catch {
               return { key: c.community_key, count: seedMap.get(c.community_key) ?? 0 };
             }
@@ -146,64 +153,185 @@ export function SatellitePage() {
     })();
   }, []);
 
+  /** Try to fetch real community boundary polygon from layers.communities */
+  const fetchBoundary = async (com: Community) => {
+    try {
+      // Try fetching GeoJSON geometry from layers.communities
+      // PostGIS columns are commonly named: geom, geometry, boundary, geojson, the_geom, wkb_geometry
+      const colSets = [
+        'community_key, geojson',
+        'community_key, geometry',
+        'community_key, geom',
+        'community_key, boundary',
+        'community_key, the_geom',
+        'community_key, wkb_geometry',
+      ];
+      for (const cols of colSets) {
+        const geoCol = cols.split(', ')[1];
+        const { data, error } = await layers().from('communities')
+          .select(cols)
+          .eq('community_key', com.community_key)
+          .limit(1)
+          .single();
+        if (!error && data) {
+          const raw = (data as R)[geoCol];
+          if (raw) {
+            // Could be GeoJSON string or object
+            const geo = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (geo.type === 'FeatureCollection') {
+              setBoundaryGeoJSON(geo);
+              return;
+            }
+            if (geo.type === 'Feature') {
+              setBoundaryGeoJSON({ type: 'FeatureCollection', features: [geo] });
+              return;
+            }
+            if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
+              setBoundaryGeoJSON({
+                type: 'FeatureCollection',
+                features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
+              });
+              return;
+            }
+          }
+        }
+      }
+      // Fallback: try matching by name
+      const { data: nameData } = await layers().from('communities')
+        .select('*')
+        .ilike('community_name', `%${com.community_name}%`)
+        .limit(1);
+      if (nameData?.[0]) {
+        const row = nameData[0] as R;
+        // Look for any column that looks like geometry
+        for (const key of Object.keys(row)) {
+          const val = row[key];
+          if (val && typeof val === 'object' && (val.type === 'Polygon' || val.type === 'MultiPolygon')) {
+            setBoundaryGeoJSON({
+              type: 'FeatureCollection',
+              features: [{ type: 'Feature', geometry: val, properties: { name: com.community_name } }],
+            });
+            return;
+          }
+          if (val && typeof val === 'string' && val.includes('"Polygon"')) {
+            try {
+              const geo = JSON.parse(val);
+              if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
+                setBoundaryGeoJSON({
+                  type: 'FeatureCollection',
+                  features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
+                });
+                return;
+              }
+            } catch { /* not valid JSON */ }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Satellite] boundary fetch failed:', e);
+    }
+    // Fallback to bbox rectangle
+    setBoundaryGeoJSON(null);
+  };
+
   const loadCommunity = async (com: Community) => {
     setSelected(com);
     setAmenities([]);
-    setImgLoaded(false);
+    setBoundaryGeoJSON(null);
     setLoading(true);
     setFilterCat('all');
     setFilterOp('all');
+    setPopupAmenity(null);
     setStatus('Fetching amenities...');
 
+    // Fetch boundary and amenities in parallel
+    const [amenityResult] = await Promise.all([
+      fetchAmenities(com),
+      fetchBoundary(com),
+    ]);
+    setAmenities(amenityResult.amenities);
+    setStatus(amenityResult.status);
+    setLoading(false);
+  };
+
+  const fetchAmenities = async (com: Community): Promise<{ amenities: Amenity[]; status: string }> => {
     try {
-      // Try loading amenities from layers.amenities using bbox filter
-      // Try lat/lng first, then latitude/longitude as fallback
-      let data: R[] | null = null;
-      let error: { message: string } | null = null;
+      // Try multiple column name patterns for the amenities table
+      const attempts = [
+        { select: 'id, name, amenity_type, amenity_category, is_operational, lat, lng', latCol: 'lat', lngCol: 'lng' },
+        { select: 'id, name, amenity_type, amenity_category, is_operational, latitude, longitude', latCol: 'latitude', lngCol: 'longitude' },
+        { select: 'id, name, type, category, is_operational, lat, lng', latCol: 'lat', lngCol: 'lng' },
+      ];
 
-      const res1 = await layers().from('amenities')
-        .select('id, name, amenity_type, amenity_category, is_operational, lat, lng')
-        .gte('lat', com.bbox_south).lte('lat', com.bbox_north)
-        .gte('lng', com.bbox_west).lte('lng', com.bbox_east)
-        .order('amenity_type', { ascending: true })
-        .limit(500);
-
-      if (res1.error) {
-        console.warn('[Satellite] lat/lng failed, trying latitude/longitude:', res1.error.message);
-        const res2 = await layers().from('amenities')
-          .select('id, name, amenity_type, amenity_category, is_operational, latitude, longitude')
-          .gte('latitude', com.bbox_south).lte('latitude', com.bbox_north)
-          .gte('longitude', com.bbox_west).lte('longitude', com.bbox_east)
-          .order('amenity_type', { ascending: true })
+      for (const attempt of attempts) {
+        const { data, error } = await layers().from('amenities')
+          .select(attempt.select)
+          .gte(attempt.latCol, com.bbox_south).lte(attempt.latCol, com.bbox_north)
+          .gte(attempt.lngCol, com.bbox_west).lte(attempt.lngCol, com.bbox_east)
           .limit(500);
-        data = res2.data;
-        error = res2.error;
-      } else {
-        data = res1.data;
-        error = res1.error;
+
+        if (error) {
+          console.warn(`[Satellite] amenities attempt (${attempt.latCol}/${attempt.lngCol}) failed:`, error.message);
+          continue;
+        }
+
+        if (data) {
+          const amenityData = data.map((a: R, i: number) => ({
+            id: a.id ?? i,
+            name: a.name || 'Unknown',
+            amenity_type: a.amenity_type || a.type || '',
+            amenity_category: a.amenity_category || a.category || '',
+            is_operational: a.is_operational ?? true,
+            lat: Number(a.lat ?? a.latitude),
+            lng: Number(a.lng ?? a.longitude),
+          }));
+          console.log(`[Satellite] Loaded ${amenityData.length} amenities for ${com.community_name} via ${attempt.latCol}/${attempt.lngCol}`);
+          return { amenities: amenityData, status: `${amenityData.length} amenities · ${com.community_name}` };
+        }
       }
 
-      if (error) {
-        console.error('[Satellite] amenities query error:', error.message);
-        setStatus(`${com.amenity_count} amenities (seed) · ${com.community_name}`);
-      } else {
-        const amenityData = (data || []).map((a: R) => ({
-          id: a.id,
-          name: a.name || 'Unknown',
-          amenity_type: a.amenity_type || '',
-          amenity_category: a.amenity_category || '',
-          is_operational: a.is_operational ?? true,
-          lat: Number(a.lat ?? a.latitude),
-          lng: Number(a.lng ?? a.longitude),
-        }));
-        setAmenities(amenityData);
-        setStatus(`${amenityData.length} amenities · ${com.community_name}`);
+      // If all select patterns fail, try select('*') to discover columns
+      const { data: wildData, error: wildError } = await layers().from('amenities')
+        .select('*')
+        .limit(1);
+      if (!wildError && wildData?.[0]) {
+        const cols = Object.keys(wildData[0]);
+        console.log('[Satellite] amenities table columns:', cols);
+        // Find lat/lng columns dynamically
+        const latCol = cols.find(c => /^(lat|latitude|y|lat_)$/i.test(c));
+        const lngCol = cols.find(c => /^(lng|lon|longitude|x|lng_|lon_)$/i.test(c));
+        const nameCol = cols.find(c => /^(name|amenity_name|title)$/i.test(c)) || 'name';
+        const typeCol = cols.find(c => /^(amenity_type|type|category|amenity_category)$/i.test(c));
+        const opCol = cols.find(c => /^(is_operational|operational|status|is_open)$/i.test(c));
+
+        if (latCol && lngCol) {
+          const { data: realData } = await layers().from('amenities')
+            .select('*')
+            .gte(latCol, com.bbox_south).lte(latCol, com.bbox_north)
+            .gte(lngCol, com.bbox_west).lte(lngCol, com.bbox_east)
+            .limit(500);
+
+          if (realData) {
+            const amenityData = realData.map((a: R, i: number) => ({
+              id: a.id ?? i,
+              name: a[nameCol] || 'Unknown',
+              amenity_type: a[typeCol || 'amenity_type'] || '',
+              amenity_category: a.amenity_category || a.category || '',
+              is_operational: opCol ? (a[opCol] === true || a[opCol] === 'OPEN' || a[opCol] === 'operational') : true,
+              lat: Number(a[latCol]),
+              lng: Number(a[lngCol]),
+            }));
+            console.log(`[Satellite] Loaded ${amenityData.length} amenities via discovered cols: ${latCol}/${lngCol}`);
+            return { amenities: amenityData, status: `${amenityData.length} amenities · ${com.community_name}` };
+          }
+        }
       }
+
+      return { amenities: [], status: `${com.amenity_count} amenities (seed) · ${com.community_name}` };
     } catch (e) {
       console.error('[Satellite] Failed to load amenities:', e);
-      setStatus(`${com.amenity_count} amenities (seed) · ${com.community_name}`);
+      return { amenities: [], status: `${com.amenity_count} amenities (seed) · ${com.community_name}` };
     }
-    setLoading(false);
   };
 
   const categories = useMemo(() =>
@@ -238,35 +366,25 @@ export function SatellitePage() {
     [amenities, categories]
   );
 
-  // GeoJSON polygon for community bbox overlay
-  const bboxGeoJSON = useMemo(() => {
-    if (!selected) return null;
-    const { bbox_west: w, bbox_south: s, bbox_east: e, bbox_north: n } = selected;
-    return {
-      type: 'FeatureCollection' as const,
-      features: [{
-        type: 'Feature' as const,
-        geometry: {
-          type: 'Polygon' as const,
-          coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]],
-        },
-        properties: { name: selected.community_name },
-      }],
-    };
-  }, [selected]);
+  // Use real boundary polygon if available, else bbox rectangle
+  const polygonGeoJSON = useMemo(() => {
+    if (boundaryGeoJSON) return boundaryGeoJSON;
+    if (selected) return bboxToPolygon(selected);
+    return null;
+  }, [boundaryGeoJSON, selected]);
 
   // Fly mapbox to community bounds when selected
   const flyToSelected = useCallback(() => {
     if (!selected || !mapboxRef.current) return;
     mapboxRef.current.fitBounds(
       [[selected.bbox_west, selected.bbox_south], [selected.bbox_east, selected.bbox_north]],
-      { padding: 40, duration: 1500 }
+      { padding: 60, duration: 1500 }
     );
   }, [selected]);
 
   useEffect(() => {
-    if (viewMode === 'mapbox') flyToSelected();
-  }, [selected, viewMode, flyToSelected]);
+    flyToSelected();
+  }, [selected, flyToSelected]);
 
   // Theme-adaptive colors
   const bg = isDark ? '#07080d' : '#f5f7fa';
@@ -280,28 +398,30 @@ export function SatellitePage() {
   const accentBlue = isDark ? '#00d4ff' : '#0284c7';
   const dotBg = isDark ? '#091422' : '#f0f4f8';
   const overlayBg = isDark ? '#07080da8' : '#ffffffd0';
-  const tooltipBg = isDark ? '#07080d' : '#ffffff';
 
-  const bboxFillLayer: FillLayer = {
-    id: 'bbox-fill', type: 'fill', source: 'community-bbox',
-    paint: { 'fill-color': accentBlue, 'fill-opacity': 0.08 },
+  const fillLayer: FillLayer = {
+    id: 'boundary-fill', type: 'fill', source: 'community-boundary',
+    paint: { 'fill-color': accentBlue, 'fill-opacity': 0.12 },
   };
-  const bboxLineLayer: LineLayer = {
-    id: 'bbox-line', type: 'line', source: 'community-bbox',
-    paint: { 'line-color': accentBlue, 'line-width': 2, 'line-dasharray': [4, 2], 'line-opacity': 0.7 },
+  const lineLayer: LineLayer = {
+    id: 'boundary-line', type: 'line', source: 'community-boundary',
+    paint: {
+      'line-color': accentBlue, 'line-width': 2.5,
+      'line-opacity': 0.85,
+    },
   };
 
   return (
     <div style={{ fontFamily: "'JetBrains Mono','Courier New',monospace", background: bg, color: textSecondary, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap'); @keyframes pinDrop{from{transform:translate(-50%,-50%) scale(0) rotate(20deg);opacity:0}to{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:1}} @keyframes ringPulse{0%{transform:translate(-50%,-50%) scale(1);opacity:.7}100%{transform:translate(-50%,-50%) scale(3);opacity:0}} @keyframes spin{to{transform:rotate(360deg)}} @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} .sat-crow{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid ${rowBorder};transition:background .12s} .sat-crow:hover,.sat-crow.sel{background:${isDark ? '#0b1728' : '#f0f6ff'}} .sat-chip{background:transparent;border:1px solid ${borderC};color:${textDim};font-family:inherit;font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;white-space:nowrap} .sat-chip.on{background:${accentBlue}12;border-color:${accentBlue};color:${accentBlue}} .sat-chip:hover:not(.on){border-color:${isDark ? '#243a52' : '#c0c8d0'};color:${isDark ? '#5a7a9a' : '#475569'}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap'); @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} .sat-crow{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid ${rowBorder};transition:background .12s} .sat-crow:hover,.sat-crow.sel{background:${isDark ? '#0b1728' : '#f0f6ff'}} .sat-chip{background:transparent;border:1px solid ${borderC};color:${textDim};font-family:inherit;font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;white-space:nowrap} .sat-chip.on{background:${accentBlue}12;border-color:${accentBlue};color:${accentBlue}} .sat-chip:hover:not(.on){border-color:${isDark ? '#243a52' : '#c0c8d0'};color:${isDark ? '#5a7a9a' : '#475569'}} .mapboxgl-popup-content{background:${isDark ? '#0a1628' : '#fff'}!important;border:1px solid ${borderC}!important;border-radius:6px!important;box-shadow:0 8px 30px ${isDark ? '#000a' : '#0002'}!important;padding:10px 14px!important}`}</style>
 
       {/* Header */}
       <div style={{ background: headerBg, borderBottom: `1px solid ${borderC}`, height: 46, display: 'flex', alignItems: 'center', padding: '0 18px', gap: 14, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: selected ? accentBlue : borderC, boxShadow: selected ? `0 0 10px ${accentBlue}80` : 'none', transition: 'all .4s' }} />
-          <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 800, color: textPrimary, letterSpacing: 3 }}>MASTERPLAN OVERLAY</span>
+          <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 800, color: textPrimary, letterSpacing: 3 }}>SATELLITE VERIFICATION</span>
           <span style={{ color: borderC }}>·</span>
-          <span style={{ fontSize: 9, color: textDim, letterSpacing: 1.5 }}>GIS VERIFICATION</span>
+          <span style={{ fontSize: 9, color: textDim, letterSpacing: 1.5 }}>GIS AMENITY OVERLAY</span>
         </div>
         <div style={{ flex: 1 }} />
         {selected && !loading && amenities.length > 0 && (
@@ -318,7 +438,6 @@ export function SatellitePage() {
             ))}
           </div>
         )}
-        {/* Theme toggle */}
         <button onClick={toggle} style={{
           background: isDark ? '#091422' : '#e8ecf0', border: `1px solid ${borderC}`,
           borderRadius: 4, padding: '4px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center',
@@ -331,26 +450,17 @@ export function SatellitePage() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Sidebar */}
         <div style={{ width: 252, background: panelBg, borderRight: `1px solid ${rowBorder}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
-          {/* Search */}
           <div style={{ padding: '10px 10px 8px', borderBottom: `1px solid ${rowBorder}` }}>
             <div style={{ position: 'relative' }}>
               <Search size={11} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: textDim, pointerEvents: 'none' }} />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search communities..."
-                style={{ background: dotBg, border: `1px solid ${borderC}`, color: textPrimary, fontFamily: 'inherit', fontSize: 10, padding: '6px 8px 6px 28px', borderRadius: 3, outline: 'none', width: '100%' }}
-              />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search communities..."
+                style={{ background: dotBg, border: `1px solid ${borderC}`, color: textPrimary, fontFamily: 'inherit', fontSize: 10, padding: '6px 8px 6px 28px', borderRadius: 3, outline: 'none', width: '100%' }} />
             </div>
           </div>
-
-          {/* Count */}
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 12px', borderBottom: `1px solid ${rowBorder}` }}>
             <span style={{ fontSize: 8, color: textDim, letterSpacing: 1 }}>WITH GIS DATA</span>
             <span style={{ fontSize: 8, color: accentBlue }}>{communities.filter(c => c.amenity_count > 0).length}</span>
           </div>
-
-          {/* List */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {filteredComs.map(com => {
               const has = com.amenity_count > 0;
@@ -377,16 +487,14 @@ export function SatellitePage() {
               );
             })}
           </div>
-
-          {/* DB source */}
           <div style={{ padding: '8px 12px', borderTop: `1px solid ${rowBorder}`, fontSize: 7.5, color: textDim, lineHeight: 1.7 }}>
-            <div style={{ color: textDim }}>SOURCE · bronze.masterplan_images</div>
-            <div>CDN · static.propsearch.ae</div>
+            <div>SOURCE · layers.communities + amenities</div>
+            <div>MAP · Mapbox Satellite</div>
             <div>BOUNDS · georectified bbox per community</div>
           </div>
         </div>
 
-        {/* Main panel */}
+        {/* Main panel — Satellite map only */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {!selected ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, opacity: 0.5 }}>
@@ -417,19 +525,11 @@ export function SatellitePage() {
                     </button>
                   );
                 })}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <span style={{ fontSize: 9, color: textDim }}>{visible.length} pins</span>
-                  <div style={{ width: 1, height: 14, background: borderC }} />
-                  <button className={`sat-chip${viewMode === 'masterplan' ? ' on' : ''}`} onClick={() => setViewMode('masterplan')}>PLAN</button>
-                  <button className={`sat-chip${viewMode === 'mapbox' ? ' on' : ''}`}
-                    style={viewMode === 'mapbox' ? { borderColor: '#10b981', color: '#10b981', background: '#10b98112' } : {}}
-                    onClick={() => setViewMode('mapbox')}>SATELLITE</button>
-                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 9, color: textDim, flexShrink: 0 }}>{visible.length} pins</span>
               </div>
 
-              {/* Map area */}
+              {/* Satellite map */}
               <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                {/* Spinner */}
                 {loading && (
                   <div style={{ position: 'absolute', inset: 0, background: isDark ? '#04080ecc' : '#ffffffcc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, zIndex: 60 }}>
                     <Loader2 className="animate-spin" size={30} style={{ color: accentBlue }} />
@@ -437,169 +537,71 @@ export function SatellitePage() {
                   </div>
                 )}
 
-                {/* ═══ MAPBOX SATELLITE VIEW ═══ */}
-                {viewMode === 'mapbox' ? (
-                  <MapGL
-                    ref={mapboxRef}
-                    mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
-                    mapStyle={isDark ? 'mapbox://styles/mapbox/satellite-streets-v12' : 'mapbox://styles/mapbox/satellite-v9'}
-                    initialViewState={{
-                      longitude: (selected.bbox_west + selected.bbox_east) / 2,
-                      latitude: (selected.bbox_south + selected.bbox_north) / 2,
-                      zoom: 14,
-                    }}
-                    style={{ width: '100%', height: '100%' }}
-                    onLoad={flyToSelected}
-                  >
-                    {/* Amenity markers */}
-                    {visible.map(a => {
-                      const cat = a.amenity_type || a.amenity_category || 'default';
-                      const color = CAT_COLORS[cat] || CAT_COLORS.default;
-                      const dotColor = a.is_operational ? color : '#4a6a8a';
-                      return (
-                        <Marker key={a.id} longitude={a.lng} latitude={a.lat} anchor="center"
-                          onClick={e => { e.originalEvent.stopPropagation(); setPopupAmenity(a); }}>
-                          <div style={{
-                            width: a.is_operational ? 12 : 8, height: a.is_operational ? 12 : 8,
-                            borderRadius: '50%', background: dotColor,
-                            border: `2px solid ${a.is_operational ? '#fff' : '#555'}`,
-                            boxShadow: `0 0 6px ${dotColor}aa, 0 1px 3px #0006`,
-                            cursor: 'pointer',
-                          }} />
-                        </Marker>
-                      );
-                    })}
+                <MapGL
+                  ref={mapboxRef}
+                  mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
+                  mapStyle={isDark ? 'mapbox://styles/mapbox/satellite-streets-v12' : 'mapbox://styles/mapbox/satellite-v9'}
+                  initialViewState={{
+                    longitude: (selected.bbox_west + selected.bbox_east) / 2,
+                    latitude: (selected.bbox_south + selected.bbox_north) / 2,
+                    zoom: 14,
+                  }}
+                  style={{ width: '100%', height: '100%' }}
+                  onLoad={flyToSelected}
+                >
+                  {/* Community boundary polygon */}
+                  {polygonGeoJSON && (
+                    <Source id="community-boundary" type="geojson" data={polygonGeoJSON}>
+                      <Layer {...fillLayer} />
+                      <Layer {...lineLayer} />
+                    </Source>
+                  )}
 
-                    {/* Popup */}
-                    {popupAmenity && (
-                      <Popup longitude={popupAmenity.lng} latitude={popupAmenity.lat} anchor="bottom" offset={14}
-                        onClose={() => setPopupAmenity(null)} closeButton={false}
-                        style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                        <div style={{ padding: '4px 2px', minWidth: 140 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#111', marginBottom: 4 }}>{popupAmenity.name}</div>
-                          <div style={{ display: 'flex', gap: 8, fontSize: 8 }}>
-                            <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || '#666', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              {popupAmenity.amenity_type || popupAmenity.amenity_category}
-                            </span>
-                            <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
-                              {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 7, color: '#888', marginTop: 3 }}>
-                            {popupAmenity.lat.toFixed(5)}°N, {popupAmenity.lng.toFixed(5)}°E
-                          </div>
+                  {/* Amenity markers */}
+                  {visible.map(a => {
+                    const cat = a.amenity_type || a.amenity_category || 'default';
+                    const color = CAT_COLORS[cat] || CAT_COLORS.default;
+                    const dotColor = a.is_operational ? color : '#4a6a8a';
+                    return (
+                      <Marker key={a.id} longitude={a.lng} latitude={a.lat} anchor="center"
+                        onClick={e => { e.originalEvent.stopPropagation(); setPopupAmenity(a); }}>
+                        <div style={{
+                          width: a.is_operational ? 14 : 9, height: a.is_operational ? 14 : 9,
+                          borderRadius: '50%', background: dotColor,
+                          border: `2px solid ${a.is_operational ? '#fff' : '#555'}`,
+                          boxShadow: `0 0 8px ${dotColor}cc, 0 1px 4px #0008`,
+                          cursor: 'pointer', transition: 'transform .15s',
+                        }}
+                          onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'scale(1.4)'; }}
+                          onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'scale(1)'; }}
+                        />
+                      </Marker>
+                    );
+                  })}
+
+                  {/* Popup */}
+                  {popupAmenity && (
+                    <Popup longitude={popupAmenity.lng} latitude={popupAmenity.lat} anchor="bottom" offset={14}
+                      onClose={() => setPopupAmenity(null)} closeButton={false}>
+                      <div style={{ minWidth: 160 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: textPrimary, marginBottom: 5 }}>{popupAmenity.name}</div>
+                        <div style={{ display: 'flex', gap: 10, fontSize: 8 }}>
+                          <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            {popupAmenity.amenity_type || popupAmenity.amenity_category}
+                          </span>
+                          <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
+                            {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
+                          </span>
                         </div>
-                      </Popup>
-                    )}
-
-                    {/* Community bbox polygon overlay */}
-                    {bboxGeoJSON && (
-                      <Source id="community-bbox" type="geojson" data={bboxGeoJSON}>
-                        <Layer {...bboxFillLayer} />
-                        <Layer {...bboxLineLayer} />
-                      </Source>
-                    )}
-                  </MapGL>
-                ) : (
-                  /* ═══ MASTERPLAN OVERLAY VIEW ═══ */
-                  <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative', background: isDark ? '#04080e' : '#e8ecf0', cursor: 'default' }}
-                    onClick={() => setHovered(null)}>
-                    {/* Masterplan image */}
-                    <img
-                      src={selected.image_url}
-                      alt={selected.community_name}
-                      onLoad={() => setImgLoaded(true)}
-                      onError={() => setImgLoaded(true)}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', opacity: imgLoaded ? 1 : 0, transition: 'opacity .5s' }}
-                    />
-                    {/* Bbox polygon overlay on masterplan */}
-                    {imgLoaded && (
-                      <div style={{
-                        position: 'absolute', inset: 0,
-                        border: `2px dashed ${accentBlue}90`,
-                        borderRadius: 2,
-                        boxShadow: `inset 0 0 30px ${accentBlue}15, 0 0 0 1px ${accentBlue}20`,
-                        pointerEvents: 'none',
-                      }}>
-                        {/* Corner markers */}
-                        {[[0, 0], [100, 0], [100, 100], [0, 100]].map(([x, y], i) => (
-                          <div key={i} style={{
-                            position: 'absolute',
-                            left: x === 0 ? -3 : undefined, right: x === 100 ? -3 : undefined,
-                            top: y === 0 ? -3 : undefined, bottom: y === 100 ? -3 : undefined,
-                            width: 6, height: 6, borderRadius: '50%',
-                            background: accentBlue, boxShadow: `0 0 8px ${accentBlue}`,
-                          }} />
-                        ))}
+                        <div style={{ fontSize: 7, color: textDim, marginTop: 4 }}>
+                          {popupAmenity.lat.toFixed(5)}°N, {popupAmenity.lng.toFixed(5)}°E
+                        </div>
                       </div>
-                    )}
+                    </Popup>
+                  )}
+                </MapGL>
 
-                    {/* Pins */}
-                    {imgLoaded && visible.map((a, idx) => {
-                      const { x, y } = toPercent(a.lat, a.lng, selected);
-                      if (x < -1 || x > 101 || y < -1 || y > 101) return null;
-                      const cat = a.amenity_type || a.amenity_category || 'default';
-                      const color = CAT_COLORS[cat] || CAT_COLORS.default;
-                      const dotColor = a.is_operational ? color : '#4a6a8a';
-                      const isHov = hovered?.id === a.id;
-
-                      return (
-                        <div key={a.id}
-                          style={{
-                            position: 'absolute', left: `${x}%`, top: `${y}%`, zIndex: isHov ? 50 : 10, cursor: 'pointer',
-                            animation: `pinDrop .3s cubic-bezier(.34,1.56,.64,1) ${Math.min(idx, 30) * 15}ms both`,
-                          }}
-                          onMouseEnter={e => { e.stopPropagation(); setHovered(a); }}
-                          onMouseLeave={() => setHovered(null)}
-                          onClick={e => e.stopPropagation()}>
-                          {a.is_operational && (
-                            <div style={{
-                              position: 'absolute', width: 10, height: 10, left: '50%', top: '50%', borderRadius: '50%',
-                              border: `1.5px solid ${color}`, animation: 'ringPulse 2.2s ease-out infinite',
-                            }} />
-                          )}
-                          <div style={{
-                            position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
-                            width: isHov ? 13 : a.is_operational ? 9 : 7,
-                            height: isHov ? 13 : a.is_operational ? 9 : 7,
-                            borderRadius: '50%', background: dotColor,
-                            border: `${isHov ? 2 : 1.5}px solid ${a.is_operational ? '#fff' : '#2a3a4a'}`,
-                            boxShadow: isHov ? `0 0 14px ${dotColor},0 0 6px #000` : a.is_operational ? `0 0 5px ${dotColor}70` : 'none',
-                            transition: 'all .15s',
-                          }} />
-                          {isHov && (
-                            <div style={{
-                              position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%', transform: 'translateX(-50%)',
-                              background: tooltipBg, border: `1px solid ${color}60`,
-                              borderRadius: 4, padding: '8px 12px', whiteSpace: 'nowrap',
-                              pointerEvents: 'none', animation: 'slideIn .1s ease',
-                              boxShadow: `0 6px 24px ${isDark ? '#000c' : '#0003'}, 0 0 0 1px ${color}20`,
-                              minWidth: 160,
-                            }}>
-                              <div style={{ fontSize: 11, fontWeight: 600, color: textPrimary, marginBottom: 5 }}>{a.name}</div>
-                              <div style={{ display: 'flex', gap: 10 }}>
-                                <span style={{ fontSize: 8, color, letterSpacing: 0.5, textTransform: 'uppercase' }}>{cat}</span>
-                                <span style={{ fontSize: 8, color: a.is_operational ? '#10b981' : '#ef4444' }}>
-                                  {a.is_operational ? '● Operational' : '○ Not yet'}
-                                </span>
-                              </div>
-                              <div style={{ fontSize: 7.5, color: textDim, marginTop: 4 }}>
-                                {a.lat?.toFixed(5)}°N, {a.lng?.toFixed(5)}°E
-                              </div>
-                              <div style={{
-                                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                                width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-                                borderTop: `6px solid ${color}60`,
-                              }} />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Community title overlay (both modes) */}
+                {/* Community title overlay */}
                 <div style={{ position: 'absolute', top: 12, left: 12, pointerEvents: 'none', animation: 'slideIn .4s ease', zIndex: 10 }}>
                   <div style={{
                     fontFamily: "'Barlow Condensed',sans-serif", fontSize: 24, fontWeight: 800, color: '#fff',
@@ -617,7 +619,7 @@ export function SatellitePage() {
                   position: 'absolute', bottom: 10, left: 12, background: overlayBg,
                   border: `1px solid ${borderC}30`, borderRadius: 3, padding: '4px 8px', backdropFilter: 'blur(8px)', pointerEvents: 'none', zIndex: 10,
                 }}>
-                  <div style={{ fontSize: 7, color: textDim }}>
+                  <div style={{ fontSize: 7, color: isDark ? '#8ab' : textDim }}>
                     {selected.bbox_north.toFixed(4)}°N–{selected.bbox_south.toFixed(4)}°N · {selected.bbox_west.toFixed(4)}°E–{selected.bbox_east.toFixed(4)}°E
                   </div>
                 </div>
@@ -628,7 +630,7 @@ export function SatellitePage() {
                     position: 'absolute', bottom: 10, right: 12, background: overlayBg,
                     border: `1px solid ${borderC}50`, borderRadius: 4, padding: '8px 10px', backdropFilter: 'blur(8px)', maxWidth: 170, zIndex: 10,
                   }}>
-                    <div style={{ fontSize: 7.5, color: textDim, letterSpacing: 1, marginBottom: 5 }}>CATEGORIES</div>
+                    <div style={{ fontSize: 7.5, color: isDark ? '#8ab' : textDim, letterSpacing: 1, marginBottom: 5 }}>CATEGORIES</div>
                     {categories.slice(0, 10).map(cat => {
                       const c = CAT_COLORS[cat] || CAT_COLORS.default;
                       return (
