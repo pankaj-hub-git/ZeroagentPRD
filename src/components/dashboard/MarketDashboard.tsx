@@ -7,6 +7,9 @@ import {
 import { useTheme, ThemeColors } from '@/lib/theme';
 
 const CHART_MARGIN = { top: 5, right: 5, bottom: 5, left: -10 };
+const FONT_DATA = "'IBM Plex Mono', monospace";
+const FONT_BODY = "'DM Sans', sans-serif";
+const FONT_DISPLAY = "'Cormorant Garamond', serif";
 
 // ═══ Theme helper — maps ThemeColors to internal short names ═══
 function mkC(colors: ThemeColors) {
@@ -79,11 +82,11 @@ const fmt = (n: number | null | undefined) => {
 };
 const ml = (d: string) => typeof d === 'string' ? d.slice(2, 7) : '';
 
-function mkTp(C: ReturnType<typeof mkC>) {
+function mkTp(_C: ReturnType<typeof mkC>) {
   return {
-    contentStyle: { background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 6, fontSize: 10, color: C.tx },
-    itemStyle: { color: C.tx, fontSize: 10 },
-    labelStyle: { color: C.mt, fontSize: 9 },
+    contentStyle: { background: 'var(--color-tooltip-bg)', border: '1px solid var(--color-tooltip-border)', borderRadius: 6, fontSize: 10, color: 'var(--color-text-primary)' },
+    itemStyle: { color: 'var(--color-text-primary)', fontSize: 10 },
+    labelStyle: { color: 'var(--color-text-secondary)', fontSize: 9 },
   };
 }
 function mkPC(C: ReturnType<typeof mkC>) {
@@ -97,7 +100,7 @@ function Dl({ v, C }: { v: number | null | undefined; C: ReturnType<typeof mkC> 
   if (v == null) return <span style={{ color: C.mt }}>—</span>;
   const c = v > 0 ? C.up : v < 0 ? C.dn : C.mt;
   return (
-    <span style={{ color: c, fontWeight: 600, fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" }}>
+    <span className="font-data" style={{ color: c, fontWeight: 600, fontSize: 11 }}>
       {v > 0 ? '+' : ''}{Number(v).toFixed(1)}%
     </span>
   );
@@ -105,22 +108,22 @@ function Dl({ v, C }: { v: number | null | undefined; C: ReturnType<typeof mkC> 
 
 function KPI({ l, v, d, s, ac, C }: { l: string; v: string; d?: number | null; s?: string; ac?: string; C: ReturnType<typeof mkC> }) {
   return (
-    <div style={{ background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 8, padding: '12px 14px', flex: 1, minWidth: 130, position: 'relative' }}>
+    <div className="za-kpi">
       {ac && <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: ac, borderRadius: '8px 0 0 8px' }} />}
-      <div style={{ color: C.mt, fontSize: 9, textTransform: 'uppercase', letterSpacing: 1.4, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 4 }}>{l}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: ac || C.tx, fontFamily: "'Instrument Serif', serif", lineHeight: 1 }}>{v}</div>
-      {d != null && <div style={{ marginTop: 4 }}><Dl C={C} v={d} />{s && <span style={{ color: C.dm, fontSize: 10 }}> {s}</span>}</div>}
+      <div className="za-kpi-label">{l}</div>
+      <div className="za-kpi-value" style={{ color: ac || undefined }}>{v}</div>
+      {d != null && <div style={{ marginTop: 4 }}><Dl C={C} v={d} />{s && <span className="za-hint" style={{ fontSize: 10 }}> {s}</span>}</div>}
     </div>
   );
 }
 
-function Cd({ t, sub, right, children, C }: { t: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; C: ReturnType<typeof mkC> }) {
+function Cd({ t, sub, right, children }: { t: string; sub?: string; right?: React.ReactNode; children: React.ReactNode; C: ReturnType<typeof mkC> }) {
   return (
-    <div style={{ background: C.sf, border: `1px solid ${C.bd}`, borderRadius: 8, padding: '14px 16px', marginBottom: 12 }}>
+    <div className="za-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.tx, fontFamily: "'Instrument Serif', serif" }}>{t}</div>
-          {sub && <div style={{ fontSize: 9, color: C.dm, marginTop: 1, fontFamily: "'IBM Plex Mono', monospace" }}>{sub}</div>}
+          <div className="za-card-title">{t}</div>
+          {sub && <div className="za-card-subtitle">{sub}</div>}
         </div>
         {right}
       </div>
@@ -129,10 +132,9 @@ function Cd({ t, sub, right, children, C }: { t: string; sub?: string; right?: R
   );
 }
 
-function Sel({ opts, val, set, C }: { opts: string[]; val: string; set: (v: string) => void; C: ReturnType<typeof mkC> }) {
+function Sel({ opts, val, set }: { opts: string[]; val: string; set: (v: string) => void; C: ReturnType<typeof mkC> }) {
   return (
-    <select value={val} onChange={e => set(e.target.value)}
-      style={{ background: C.sf, color: C.tx, border: `1px solid ${C.bd}`, borderRadius: 4, padding: '3px 8px', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", cursor: 'pointer' }}>
+    <select className="za-select" value={val} onChange={e => set(e.target.value)}>
       {opts.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
@@ -273,33 +275,29 @@ export function MarketDashboard() {
   const intv12 = Math.max(1, Math.floor(mkt.length / 12));
   const intv10 = Math.max(1, Math.floor(mkt.length / 10));
 
-  if (ld) return <div style={{ padding: 40, textAlign: 'center', color: C.mt, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>Loading from gold tables...</div>;
-  if (err && !mkt.length) return <div style={{ padding: 40, textAlign: 'center', color: C.dn, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>Error: {err}</div>;
-  if (!mkt.length) return <div style={{ padding: 40, textAlign: 'center', color: C.mt, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>No data available.</div>;
+  if (ld) return <div className="font-data text-center p-10" style={{ color: C.mt, fontSize: 12 }}>Loading from gold tables...</div>;
+  if (err && !mkt.length) return <div className="font-data text-center p-10" style={{ color: C.dn, fontSize: 12 }}>Error: {err}</div>;
+  if (!mkt.length) return <div className="font-data text-center p-10" style={{ color: C.mt, fontSize: 12 }}>No data available.</div>;
 
   return (
     <div>
       {usingFallback && (
-        <div style={{ padding: '6px 12px', marginBottom: 10, background: C.gdB, border: `1px solid ${C.gd}33`, borderRadius: 4, fontSize: 10, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>
+        <div className="font-data za-signal-box za-signal-box--gold" style={{ marginBottom: 10, fontSize: 10 }}>
           Showing sample data — gold tables will load when available
         </div>
       )}
       {/* Sub-tab bar */}
-      <div style={{ display: 'flex', gap: 0, overflowX: 'auto', marginBottom: 14, borderBottom: `1px solid ${C.bd}` }}>
+      <div style={{ display: 'flex', gap: 0, overflowX: 'auto', marginBottom: 14, borderBottom: '1px solid var(--color-border)' }}>
         {TABS.map((t, i) => (
-          <button key={i} onClick={() => setTab(i)} style={{
-            padding: '5px 11px', background: 'none', border: 'none',
-            borderBottom: `2px solid ${tab === i ? C.gd : 'transparent'}`,
-            color: tab === i ? C.tx : C.mt, cursor: 'pointer', fontSize: 10, fontWeight: 500,
-            fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: 'nowrap',
-          }}>{t}</button>
+          <button key={i} onClick={() => setTab(i)}
+            className={`za-subtab ${tab === i ? 'active' : ''}`}>{t}</button>
         ))}
       </div>
 
       {/* ═══ TAB 0: OVERVIEW ═══ */}
       {tab === 0 && (<>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>Monthly snapshot</span>
+          <span className="za-mono-sm">Monthly snapshot</span>
           <Sel C={C} opts={months} val={selM} set={setSelM} />
         </div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -356,7 +354,7 @@ export function MarketDashboard() {
       {/* ═══ TAB 1: SALES & SUPPLY ═══ */}
       {tab === 1 && (<>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>Sales activity</span>
+          <span className="za-mono-sm">Sales activity</span>
           <Sel C={C} opts={months} val={selM} set={setSelM} />
         </div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -408,7 +406,7 @@ export function MarketDashboard() {
       {/* ═══ TAB 2: RENTAL & YIELD ═══ */}
       {tab === 2 && (<>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>Rental market</span>
+          <span className="za-mono-sm">Rental market</span>
           <Sel C={C} opts={months} val={selM} set={setSelM} />
         </div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -435,7 +433,7 @@ export function MarketDashboard() {
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={yieldBR} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.bd} />
-                <XAxis dataKey="b" tick={{ fill: C.dm, fontSize: 9, fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                <XAxis dataKey="b" tick={{ fill: C.dm, fontSize: 9, fontFamily: FONT_BODY }} />
                 <YAxis tick={{ fill: C.dm, fontSize: 9 }} domain={[0, 10]} tickFormatter={v => `${v}%`} />
                 <Tooltip {...tp} />
                 <Bar dataKey="y" radius={[3, 3, 0, 0]} name="Yield%">
@@ -459,15 +457,15 @@ export function MarketDashboard() {
         <Cd C={C} t="Tenant Commitment by Area" sub="Renewal rate + multi-year commitment — quarterly"
           right={<Sel C={C} opts={rcaQuarters} val={selQ} set={setSelQ} />}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: FONT_DATA }}>
               <thead><tr>
                 {['Area', 'Contracts', 'Renewal %', 'Multi-Yr %', 'Projects', 'Profile'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Area' || h === 'Profile' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: "'IBM Plex Sans', sans-serif" }}>{h}</th>
+                  <th key={h} style={{ textAlign: h === 'Area' || h === 'Profile' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: FONT_BODY }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>{rcaFiltered.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ padding: '6px 8px', fontFamily: "'IBM Plex Sans', sans-serif" }}>{r.area_name}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: FONT_BODY }}>{r.area_name}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmt(r.total_contracts)}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right', color: Number(r.renewal_pct) >= 55 ? C.up : Number(r.renewal_pct) < 30 ? C.dn : C.am, fontWeight: 600 }}>{r.renewal_pct}%</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.multi_year_pct}%</td>
@@ -487,16 +485,16 @@ export function MarketDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Cd C={C} t="Transient Projects" sub={`Renewal < 25% — ${selQ}`}>
             <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: "'IBM Plex Mono', monospace" }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: FONT_DATA }}>
                 <thead><tr>
                   {['Project', 'Area', 'Contracts', 'Renewal%'].map(h => (
-                    <th key={h} style={{ textAlign: h === 'Project' || h === 'Area' ? 'left' : 'right', padding: '4px 6px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, fontFamily: "'IBM Plex Sans', sans-serif", position: 'sticky' as const, top: 0, background: C.sf }}>{h}</th>
+                    <th key={h} style={{ textAlign: h === 'Project' || h === 'Area' ? 'left' : 'right', padding: '4px 6px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, fontFamily: FONT_BODY, position: 'sticky' as const, top: 0, background: C.sf }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>{rcpTransient.map((r, i) => (
                   <tr key={i}>
-                    <td style={{ padding: '4px 6px', fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9 }}>{r.project_name?.slice(0, 25)}</td>
-                    <td style={{ padding: '4px 6px', fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9, color: C.dm }}>{r.area_name?.slice(0, 20)}</td>
+                    <td style={{ padding: '4px 6px', fontFamily: FONT_BODY, fontSize: 9 }}>{r.project_name?.slice(0, 25)}</td>
+                    <td style={{ padding: '4px 6px', fontFamily: FONT_BODY, fontSize: 9, color: C.dm }}>{r.area_name?.slice(0, 20)}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right' }}>{r.total_contracts}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right', color: C.dn, fontWeight: 600 }}>{r.renewal_pct}%</td>
                   </tr>
@@ -506,16 +504,16 @@ export function MarketDashboard() {
           </Cd>
           <Cd C={C} t="Sticky Projects" sub={`Renewal > 65% — ${selQ}`}>
             <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: "'IBM Plex Mono', monospace" }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: FONT_DATA }}>
                 <thead><tr>
                   {['Project', 'Area', 'Contracts', 'Renewal%'].map(h => (
-                    <th key={h} style={{ textAlign: h === 'Project' || h === 'Area' ? 'left' : 'right', padding: '4px 6px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, fontFamily: "'IBM Plex Sans', sans-serif", position: 'sticky' as const, top: 0, background: C.sf }}>{h}</th>
+                    <th key={h} style={{ textAlign: h === 'Project' || h === 'Area' ? 'left' : 'right', padding: '4px 6px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, fontFamily: FONT_BODY, position: 'sticky' as const, top: 0, background: C.sf }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>{rcpSticky.map((r, i) => (
                   <tr key={i}>
-                    <td style={{ padding: '4px 6px', fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9 }}>{r.project_name?.slice(0, 25)}</td>
-                    <td style={{ padding: '4px 6px', fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 9, color: C.dm }}>{r.area_name?.slice(0, 20)}</td>
+                    <td style={{ padding: '4px 6px', fontFamily: FONT_BODY, fontSize: 9 }}>{r.project_name?.slice(0, 25)}</td>
+                    <td style={{ padding: '4px 6px', fontFamily: FONT_BODY, fontSize: 9, color: C.dm }}>{r.area_name?.slice(0, 20)}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right' }}>{r.total_contracts}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right', color: C.up, fontWeight: 600 }}>{r.renewal_pct}%</td>
                   </tr>
@@ -530,15 +528,15 @@ export function MarketDashboard() {
       {tab === 3 && (<>
         <Cd C={C} t={`Top Communities — Price Change${commLatestMonth ? ` (${ml(commLatestMonth)})` : ''}`} sub="Minimum 10 transactions, ranked by YoY price change">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: FONT_DATA }}>
               <thead><tr>
                 {['Community', 'Sales', 'Avg PSF', 'MoM', 'YoY', 'Yield'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Community' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: "'IBM Plex Sans', sans-serif" }}>{h}</th>
+                  <th key={h} style={{ textAlign: h === 'Community' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: FONT_BODY }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>{commRanked.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ padding: '6px 8px', fontFamily: "'IBM Plex Sans', sans-serif" }}>{r.common_name || r.area_name}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: FONT_BODY }}>{r.common_name || r.area_name}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.total_sales}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{fmt(r.avg_price_per_sqm)}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}><Dl C={C} v={r.price_psm_mom_pct} /></td>
@@ -567,7 +565,7 @@ export function MarketDashboard() {
       {/* ═══ TAB 4: STRUCTURE ═══ */}
       {tab === 4 && (<>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>Market structure</span>
+          <span className="za-mono-sm">Market structure</span>
           <Sel C={C} opts={months} val={selM} set={setSelM} />
         </div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -634,7 +632,7 @@ export function MarketDashboard() {
       {/* ═══ TAB 5: DEVELOPERS ═══ */}
       {tab === 5 && (<>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 11, color: C.mt, fontFamily: "'IBM Plex Mono', monospace" }}>Developer market share</span>
+          <span className="za-mono-sm">Developer market share</span>
           <Sel C={C} opts={months} val={selM} set={setSelM} />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -661,15 +659,15 @@ export function MarketDashboard() {
         </div>
         <Cd C={C} t="Developer Comparison" sub="Volume share vs value share — premium developers rank higher by value">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: FONT_DATA }}>
               <thead><tr>
                 {['Developer', 'Vol%', 'Val%', 'Sales', 'Avg PSF', 'Off-Plan'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Developer' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: "'IBM Plex Sans', sans-serif" }}>{h}</th>
+                  <th key={h} style={{ textAlign: h === 'Developer' ? 'left' : 'right', padding: '6px 8px', borderBottom: `1px solid ${C.bd}`, color: C.dm, fontSize: 8, textTransform: 'uppercase', fontFamily: FONT_BODY }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>{devByVol.map((r, i) => (
                 <tr key={i}>
-                  <td style={{ padding: '6px 8px', fontWeight: i < 3 ? 600 : 400, fontFamily: "'IBM Plex Sans', sans-serif", maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.developer_name}</td>
+                  <td style={{ padding: '6px 8px', fontWeight: i < 3 ? 600 : 400, fontFamily: FONT_BODY, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.developer_name}</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{Number(r.market_share_volume_pct || 0).toFixed(1)}%</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right', color: C.gd, fontWeight: 600 }}>{Number(r.market_share_value_pct || 0).toFixed(1)}%</td>
                   <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.total_sales?.toLocaleString()}</td>
@@ -682,7 +680,7 @@ export function MarketDashboard() {
         </Cd>
       </>)}
 
-      <div style={{ textAlign: 'center', padding: '18px 0 12px', color: C.dm, fontSize: 8, fontFamily: "'IBM Plex Mono', monospace" }}>
+      <div style={{ textAlign: 'center', padding: '18px 0 12px', color: C.dm, fontSize: 8, fontFamily: FONT_DATA }}>
         Source: Dubai Land Department · Dubai REST (Ejari) · {new Date().toLocaleDateString()}
       </div>
     </div>

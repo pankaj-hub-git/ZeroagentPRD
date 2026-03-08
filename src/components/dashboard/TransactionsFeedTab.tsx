@@ -34,38 +34,32 @@ function TransactionCard({ item, colors }: { item: R; colors: ReturnType<typeof 
   const priceColor = (item.price_psm_yoy_pct || 0) > 0 ? colors.green : (item.price_psm_yoy_pct || 0) < 0 ? colors.red : colors.textDim;
 
   return (
-    <div style={{
-      background: colors.surface,
-      border: `1px solid ${colors.border}`,
-      borderRadius: 8,
-      padding: 14,
-      borderLeft: `3px solid ${colors.gold}`,
-    }}>
+    <div className="za-card" style={{ borderLeft: `3px solid ${colors.gold}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: colors.text }}>{fmtMonth(item.metric_month)}</span>
-        <span style={{ fontSize: 10, color: colors.textDim, letterSpacing: '0.1em', textTransform: 'uppercase' }}>MONTHLY</span>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{fmtMonth(item.metric_month)}</span>
+        <span className="za-data-label">MONTHLY</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 9, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>Sales</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtNum(item.total_sales)}</div>
+          <div className="za-data-label">Sales</div>
+          <div className="font-data" style={{ fontSize: 18, fontWeight: 700 }}>{fmtNum(item.total_sales)}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
             {(item.sales_mom_pct || 0) > 0 ? <TrendingUp size={10} color={momColor} /> : <TrendingDown size={10} color={momColor} />}
             <span style={{ fontSize: 10, color: momColor, fontWeight: 600 }}>{item.sales_mom_pct > 0 ? '+' : ''}{Number(item.sales_mom_pct || 0).toFixed(1)}% MoM</span>
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>Value</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: colors.gold, fontFamily: "'IBM Plex Mono', monospace" }}>AED {fmtNum(item.total_sales_value)}</div>
+          <div className="za-data-label">Value</div>
+          <div className="font-data" style={{ fontSize: 18, fontWeight: 700, color: colors.gold }}>AED {fmtNum(item.total_sales_value)}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
             {(item.sales_yoy_pct || 0) > 0 ? <TrendingUp size={10} color={yoyColor} /> : <TrendingDown size={10} color={yoyColor} />}
             <span style={{ fontSize: 10, color: yoyColor, fontWeight: 600 }}>{item.sales_yoy_pct > 0 ? '+' : ''}{Number(item.sales_yoy_pct || 0).toFixed(1)}% YoY</span>
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: colors.textDim, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>Avg PSF</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtNum(item.avg_price_per_sqm)}</div>
+          <div className="za-data-label">Avg PSF</div>
+          <div className="font-data" style={{ fontSize: 18, fontWeight: 700 }}>{fmtNum(item.avg_price_per_sqm)}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
             {(item.price_psm_yoy_pct || 0) > 0 ? <TrendingUp size={10} color={priceColor} /> : <TrendingDown size={10} color={priceColor} />}
             <span style={{ fontSize: 10, color: priceColor, fontWeight: 600 }}>{item.price_psm_yoy_pct > 0 ? '+' : ''}{Number(item.price_psm_yoy_pct || 0).toFixed(1)}% YoY</span>
@@ -74,18 +68,9 @@ function TransactionCard({ item, colors }: { item: R; colors: ReturnType<typeof 
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{
-          fontSize: 9, padding: '2px 8px', borderRadius: 3, fontWeight: 600,
-          background: colors.indigoBg, color: colors.indigo,
-        }}>Off-Plan {item.offplan_ratio_pct}%</span>
-        <span style={{
-          fontSize: 9, padding: '2px 8px', borderRadius: 3, fontWeight: 600,
-          background: colors.greenBg, color: colors.green,
-        }}>Apartments {fmtNum(item.apartment_sales || 0)}</span>
-        <span style={{
-          fontSize: 9, padding: '2px 8px', borderRadius: 3, fontWeight: 600,
-          background: colors.goldBg, color: colors.gold,
-        }}>Villas {fmtNum(item.villa_sales || 0)}</span>
+        <span className="za-badge" style={{ background: colors.indigoBg, color: colors.indigo }}>Off-Plan {item.offplan_ratio_pct}%</span>
+        <span className="za-badge" style={{ background: colors.greenBg, color: colors.green }}>Apartments {fmtNum(item.apartment_sales || 0)}</span>
+        <span className="za-badge" style={{ background: colors.goldBg, color: colors.gold }}>Villas {fmtNum(item.villa_sales || 0)}</span>
       </div>
     </div>
   );
@@ -112,11 +97,11 @@ export function TransactionsFeedTab() {
     run();
   }, []);
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 className="animate-spin" size={24} style={{ color: colors.gold }} /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" size={24} style={{ color: colors.gold }} /></div>;
 
   return (
     <div>
-      <div style={{ fontSize: 11, color: colors.textDim, marginBottom: 12 }}>Monthly Transaction Summaries — Dubai Real Estate</div>
+      <div className="za-hint" style={{ marginBottom: 12 }}>Monthly Transaction Summaries — Dubai Real Estate</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
         {items.map((item, i) => <TransactionCard key={item.metric_month || i} item={item} colors={colors} />)}
       </div>

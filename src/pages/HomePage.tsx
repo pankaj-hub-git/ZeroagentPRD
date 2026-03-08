@@ -11,11 +11,12 @@ import { TransactionsFeedTab } from '@/components/dashboard/TransactionsFeedTab'
 import { TourismDashboard } from '@/components/dashboard/TourismDashboard';
 import { MacroTicker } from '@/components/dashboard/MacroTicker';
 
-const GOLD = '#C9A84C';
-const BLUE = '#2E75B6';
-const GREEN = '#27AE60';
-const RED = '#E74C3C';
-const ORANGE = '#F39C12';
+// Use theme-aware CSS variables for colors
+const GOLD = 'var(--color-gold)';
+const BLUE = 'var(--color-info)';
+const GREEN = 'var(--color-verified)';
+const RED = 'var(--color-danger)';
+const ORANGE = 'var(--color-warn)';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtMonth(m: string): string {
@@ -43,7 +44,7 @@ function formatPrice(price: number): string {
 }
 
 function pctColor(v: number): string {
-  return v > 0 ? GREEN : v < 0 ? RED : '#8892A4';
+  return v > 0 ? GREEN : v < 0 ? RED : 'var(--color-text-secondary)';
 }
 
 function PctBadge({ value }: { value: number }) {
@@ -112,6 +113,7 @@ function FeedTab({ feed, loading }: { feed: FeedItem[]; loading: boolean }) {
 /* ── Tab: Capital Flow ──────────────────────────────────────── */
 function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; loading: boolean }) {
   const [selectedQ, setSelectedQ] = useState<string>('');
+  const { mode } = useTheme();
 
   if (loading) return <Spinner />;
   if (capitalFlow.length === 0) return <p className="text-body text-text-dim">No capital rotation data available</p>;
@@ -138,11 +140,13 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
   });
   const topAreas = Object.entries(areaAgg).sort(([, a], [, b]) => b.value - a.value).slice(0, 20);
 
+  // Hardcoded hex colors needed for opacity suffix trick (${color}18)
+  const isDark = mode === 'dark';
   const SIGNAL_COLOR: Record<string, string> = {
-    inflow: GREEN,
-    outflow: RED,
-    stable: '#8892A4',
-    accelerating: GOLD,
+    inflow: isDark ? '#2DD4A0' : '#1B8A6B',
+    outflow: isDark ? '#F06D5B' : '#C0392B',
+    stable: isDark ? '#8892A4' : '#444444',
+    accelerating: isDark ? '#D4A843' : '#6B5518',
   };
 
   return (
@@ -184,10 +188,10 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
           <div className="text-label text-text-dim mb-2">{activeQ} — Value by Area</div>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={qData.slice(0, 15)}>
-              <XAxis dataKey="area" tick={{ fontSize: 8, fill: '#8892A4' }} axisLine={false} tickLine={false} interval={0} angle={-25} textAnchor="end" height={55} />
-              <YAxis tick={{ fontSize: 9, fill: '#3A3F52' }} axisLine={false} tickLine={false} width={55}
+              <XAxis dataKey="area" tick={{ fontSize: 8, fill: 'var(--color-text-secondary)' }} axisLine={false} tickLine={false} interval={0} angle={-25} textAnchor="end" height={55} />
+              <YAxis tick={{ fontSize: 9, fill: 'var(--color-text-dim)' }} axisLine={false} tickLine={false} width={55}
                 tickFormatter={(v: number) => `${(v / 1e9).toFixed(1)}B`} />
-              <Tooltip contentStyle={{ backgroundColor: '#1A1A2E', border: '1px solid #2A2A40', fontSize: 11 }}
+              <Tooltip contentStyle={{ backgroundColor: 'var(--color-tooltip-bg)', border: '1px solid var(--color-tooltip-border)', fontSize: 11 }}
                 formatter={(v: number | undefined) => [`AED ${((v ?? 0) / 1e9).toFixed(2)}B`, 'Total Value']} />
               <Bar dataKey="totalValueAed" fill={GOLD} radius={[3, 3, 0, 0]} />
             </BarChart>
@@ -221,8 +225,8 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                 <td className="py-1.5 pr-3 text-right"><PctBadge value={c.yoyPricePct} /></td>
                 <td className="py-1.5">
                   <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
-                    style={{ color: SIGNAL_COLOR[c.rotationSignal?.toLowerCase()] ?? '#8892A4',
-                      backgroundColor: `${SIGNAL_COLOR[c.rotationSignal?.toLowerCase()] ?? '#8892A4'}18` }}>
+                    style={{ color: SIGNAL_COLOR[c.rotationSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable,
+                      backgroundColor: `${SIGNAL_COLOR[c.rotationSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable}18` }}>
                     {c.rotationSignal || '—'}
                   </span>
                 </td>
@@ -258,8 +262,8 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                   <td className="py-1.5 pr-3 text-right font-mono text-gold">AED {(agg.value / 1e9).toFixed(2)}B</td>
                   <td className="py-1.5">
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
-                      style={{ color: SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? '#8892A4',
-                        backgroundColor: `${SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? '#8892A4'}18` }}>
+                      style={{ color: SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable,
+                        backgroundColor: `${SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable}18` }}>
                       {agg.latestSignal || '—'}
                     </span>
                   </td>

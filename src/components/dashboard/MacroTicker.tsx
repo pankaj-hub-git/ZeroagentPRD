@@ -179,7 +179,7 @@ export function MacroTicker() {
           </span>
           <span style={{
             color: valueColor, fontSize: 15, fontWeight: 700,
-            fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+            fontFamily: "'IBM Plex Mono', monospace",
             letterSpacing: -0.2,
           }}>
             {entry.item.value}

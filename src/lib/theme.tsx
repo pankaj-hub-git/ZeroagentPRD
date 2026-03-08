@@ -109,7 +109,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.setAttribute('data-theme', mode);
 
-    // Update CSS variables for Tailwind classes
+    // Update CSS variables for Tailwind + global CSS classes
     const vars: Record<string, string> = mode === 'dark' ? {
       '--color-bg': '#07071a',
       '--color-surface': '#0d0d20',
@@ -118,6 +118,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       '--color-text-primary': '#e8ecf1',
       '--color-text-secondary': '#8892a4',
       '--color-text-dim': '#3a3f52',
+      '--color-card-bg': 'rgba(255,255,255,0.015)',
+      '--color-card-border': 'rgba(255,255,255,0.04)',
+      '--color-card-hover': 'rgba(255,255,255,0.03)',
+      '--color-chart-grid': 'rgba(255,255,255,0.04)',
+      '--color-tooltip-bg': '#111318',
+      '--color-tooltip-border': '#1E2030',
+      '--color-gold-bg': 'rgba(212,168,67,0.08)',
+      '--color-green-bg': 'rgba(45,212,160,0.08)',
+      '--color-red-bg': 'rgba(240,109,91,0.08)',
+      '--color-indigo': '#7C83FE',
+      '--color-indigo-bg': 'rgba(124,131,254,0.08)',
+      '--color-orange': '#F39C12',
+      '--color-green': '#2DD4A0',
+      '--color-red': '#F06D5B',
     } : {
       '--color-bg': '#F5F5F0',
       '--color-surface': '#FFFFFF',
@@ -126,6 +140,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       '--color-text-primary': '#1A1A1A',
       '--color-text-secondary': '#444444',
       '--color-text-dim': '#777777',
+      '--color-card-bg': 'rgba(0,0,0,0.03)',
+      '--color-card-border': 'rgba(0,0,0,0.08)',
+      '--color-card-hover': 'rgba(0,0,0,0.05)',
+      '--color-chart-grid': 'rgba(0,0,0,0.08)',
+      '--color-tooltip-bg': '#FFFFFF',
+      '--color-tooltip-border': '#C8C4B8',
+      '--color-gold-bg': 'rgba(107,85,24,0.12)',
+      '--color-green-bg': 'rgba(27,138,107,0.12)',
+      '--color-red-bg': 'rgba(192,57,43,0.12)',
+      '--color-indigo': '#5B61D6',
+      '--color-indigo-bg': 'rgba(91,97,214,0.12)',
+      '--color-orange': '#D4850A',
+      '--color-green': '#1B8A6B',
+      '--color-red': '#C0392B',
     };
     Object.entries(vars).forEach(([k, v]) => root.style.setProperty(k, v));
   }, [mode]);

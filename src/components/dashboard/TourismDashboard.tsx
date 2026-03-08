@@ -5,6 +5,8 @@ import {
 } from 'recharts';
 import { useTheme } from '@/lib/theme';
 
+const FONT_DISPLAY = "'Cormorant Garamond', serif";
+
 // ============================================================================
 // DATA FROM BRONZE LAYER
 // ============================================================================
@@ -73,11 +75,7 @@ const ytdProgression = [
 function ThemedTooltip({ active, payload, label, formatter, colors }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{
-      background: colors.tooltipBg, border: `1px solid ${colors.tooltipBorder}`,
-      padding: '10px 14px', borderRadius: '2px', fontSize: '12px',
-      fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(10px)',
-    }}>
+    <div className="za-tooltip">
       <div style={{ color: colors.gold, fontWeight: 600, marginBottom: 4, letterSpacing: '0.05em' }}>{label}</div>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       {payload.map((p: any, i: number) => (
@@ -126,24 +124,15 @@ function AnimNum({ value, suffix = '', prefix = '', decimals = 1, duration = 120
 // ============================================================================
 // SECTION HEADER
 // ============================================================================
-function SectionHead({ tag, title, subtitle, colors }: {
+function SectionHead({ tag, title, subtitle }: {
   tag: string; title: string; subtitle?: string;
-  colors: { gold: string; text: string; textDim: string };
+  colors?: { gold: string; text: string; textDim: string };
 }) {
   return (
     <div style={{ marginBottom: 24 }}>
-      <div style={{
-        fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase',
-        color: colors.gold, fontWeight: 600, marginBottom: 6, fontFamily: "'DM Sans', sans-serif",
-      }}>{tag}</div>
-      <div style={{
-        fontSize: 18, fontWeight: 300, color: colors.text, letterSpacing: '-0.01em',
-        fontFamily: "'Cormorant Garamond', serif", lineHeight: 1.2,
-      }}>{title}</div>
-      {subtitle && <div style={{
-        fontSize: 12, color: colors.textDim, marginTop: 4, fontFamily: "'DM Sans', sans-serif",
-        fontWeight: 400, lineHeight: 1.5,
-      }}>{subtitle}</div>}
+      <div className="za-section-tag">{tag}</div>
+      <div className="za-section-title">{title}</div>
+      {subtitle && <div className="za-section-subtitle">{subtitle}</div>}
     </div>
   );
 }
@@ -156,22 +145,10 @@ function TourismKPI({ label, value, sub, accent = false, colors }: {
   colors: { gold: string; goldBg: string; text: string; textDim: string; green: string; cardBg: string; cardBorder: string };
 }) {
   return (
-    <div style={{
-      padding: '16px 18px', background: accent ? colors.goldBg : colors.cardBg,
-      border: `1px solid ${accent ? `${colors.gold}33` : colors.cardBorder}`,
-      borderRadius: 2, flex: 1, minWidth: 120,
-    }}>
-      <div style={{
-        fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase',
-        color: colors.textDim, marginBottom: 8, fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
-      }}>{label}</div>
-      <div style={{
-        fontSize: 26, fontWeight: 300, color: accent ? colors.gold : colors.text,
-        fontFamily: "'Cormorant Garamond', serif", lineHeight: 1, letterSpacing: '-0.02em',
-      }}>{value}</div>
-      {sub && <div style={{
-        fontSize: 11, color: colors.green, marginTop: 6, fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
-      }}>{sub}</div>}
+    <div className="za-kpi-slim" style={accent ? { background: colors.goldBg, borderColor: `${colors.gold}33` } : undefined}>
+      <div className="za-kpi-label">{label}</div>
+      <div className="za-kpi-value" style={{ fontSize: 26, fontWeight: 300, color: accent ? colors.gold : undefined, letterSpacing: '-0.02em' }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: colors.green, marginTop: 6, fontWeight: 500 }}>{sub}</div>}
     </div>
   );
 }
@@ -188,65 +165,7 @@ export function TourismDashboard() {
   const commColors = [colors.gold, `${colors.gold}CC`, `${colors.gold}99`, `${colors.gold}66`];
 
   return (
-    <div style={{
-      color: colors.text,
-      fontFamily: "'DM Sans', sans-serif",
-      position: 'relative',
-    }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap');
-        .tourism-grid-card {
-          background: ${colors.cardBg};
-          border: 1px solid ${colors.cardBorder};
-          border-radius: 2px;
-          padding: 24px;
-          position: relative;
-          overflow: hidden;
-        }
-        .tourism-grid-card::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, ${colors.gold}4D, transparent);
-        }
-        .tourism-signal-tag {
-          display: inline-block;
-          padding: 3px 8px;
-          font-size: 9px;
-          letter-spacing: 0.15em;
-          text-transform: uppercase;
-          border-radius: 1px;
-          font-weight: 600;
-        }
-        .tourism-market-row {
-          display: flex;
-          align-items: center;
-          padding: 10px 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border-left: 2px solid transparent;
-          margin-bottom: 2px;
-        }
-        .tourism-market-row:hover, .tourism-market-row.active {
-          background: ${colors.goldBg};
-          border-left-color: ${colors.gold};
-        }
-        .tourism-comm-card {
-          padding: 14px 16px;
-          border: 1px solid ${colors.cardBorder};
-          border-radius: 2px;
-          cursor: pointer;
-          transition: all 0.25s;
-          position: relative;
-          overflow: hidden;
-        }
-        .tourism-comm-card:hover {
-          border-color: ${colors.gold}4D;
-          background: ${colors.goldBg};
-          transform: translateY(-1px);
-        }
-      `}</style>
+    <div className="font-body" style={{ color: colors.text, position: 'relative' }}>
 
       {/* HEADER */}
       <div style={{ marginBottom: 32 }}>
@@ -260,7 +179,7 @@ export function TourismDashboard() {
           </span>
         </div>
         <h2 style={{
-          fontSize: 28, fontWeight: 300, fontFamily: "'Cormorant Garamond', serif",
+          fontSize: 28, fontWeight: 300, fontFamily: FONT_DISPLAY,
           color: colors.text, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: 8,
         }}>
           Tourism <span style={{ color: colors.gold }}>→</span> Capital Signal
@@ -282,7 +201,7 @@ export function TourismDashboard() {
 
       {/* ROW 1: Visitor Trajectory + 2025 YTD */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="Demand Signal" title="Visitor Arrival Trajectory" subtitle="International overnight visitors (millions). 7 consecutive years of recovery." />
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={visitorArrivals} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
@@ -300,12 +219,12 @@ export function TourismDashboard() {
             </AreaChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-            <span className="tourism-signal-tag" style={{ background: colors.greenBg, color: colors.green }}>BULLISH</span>
-            <span style={{ fontSize: 11, color: colors.textDim }}>19.59M in 2025 — Highest ever recorded. 17% above pre-COVID.</span>
+            <span className="za-tag" style={{ background: colors.greenBg, color: colors.green }}>BULLISH</span>
+            <span className="za-hint">19.59M in 2025 — Highest ever recorded. 17% above pre-COVID.</span>
           </div>
         </div>
 
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="2025 Momentum" title="Year-to-Date Accumulation" subtitle="Cumulative visitor count tracking ahead of 2024 at every checkpoint." />
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={ytdProgression} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
@@ -321,15 +240,15 @@ export function TourismDashboard() {
             </BarChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-            <span className="tourism-signal-tag" style={{ background: colors.goldBg, color: colors.gold }}>CONSISTENT</span>
-            <span style={{ fontSize: 11, color: colors.textDim }}>+5% YoY through Oct — demand is structural, not cyclical.</span>
+            <span className="za-tag" style={{ background: colors.goldBg, color: colors.gold }}>CONSISTENT</span>
+            <span className="za-hint">+5% YoY through Oct — demand is structural, not cyclical.</span>
           </div>
         </div>
       </div>
 
       {/* ROW 2: Seasonality + Source Markets */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="Timing Intelligence" title="Occupancy Seasonality" subtitle="When to price, when to hold. Peak window: Oct-Mar." />
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={seasonality} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
@@ -347,31 +266,27 @@ export function TourismDashboard() {
           <div style={{ display: 'flex', gap: 24, marginTop: 14, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 10, height: 10, background: colors.gold, borderRadius: 1 }} />
-              <span style={{ fontSize: 11, color: colors.textSecondary }}>Peak (Oct-Mar): 78-84%</span>
+              <span className="za-hint" style={{ color: colors.textSecondary }}>Peak (Oct-Mar): 78-84%</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 10, height: 10, background: `${colors.textDim}4D`, borderRadius: 1 }} />
-              <span style={{ fontSize: 11, color: colors.textSecondary }}>Off-peak (Apr-Sep): 65-75%</span>
+              <span className="za-hint" style={{ color: colors.textSecondary }}>Off-peak (Apr-Sep): 65-75%</span>
             </div>
           </div>
-          <div style={{
-            marginTop: 12, padding: '10px 14px',
-            background: colors.goldBg, border: `1px solid ${colors.gold}1A`,
-            borderRadius: 2, fontSize: 11, color: colors.textSecondary, lineHeight: 1.5,
-          }}>
+          <div className="za-signal-box za-signal-box--gold" style={{ marginTop: 12 }}>
             <span style={{ color: colors.gold, fontWeight: 600 }}>Investor Signal:</span> Seasonal gap below 20% —
             Dubai's year-round appeal means STR properties don't suffer the dead seasons other markets do.
           </div>
         </div>
 
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="Capital Origin" title="Source Markets → Real Estate Demand" subtitle="Where visitors come from predicts where capital flows next." />
           <div style={{ marginTop: 4 }}>
             {sourceMarkets.map((m, i) => (
               <div key={i}
-                className={`tourism-market-row ${activeMarket === i ? 'active' : ''}`}
+                className={`za-list-row ${activeMarket === i ? 'active' : ''}`}
                 onClick={() => setActiveMarket(i)}>
-                <div style={{ width: 32, fontSize: 12, fontWeight: 600, color: colors.gold, fontFamily: "'Cormorant Garamond', serif" }}>
+                <div style={{ width: 32, fontSize: 12, fontWeight: 600, color: colors.gold, fontFamily: FONT_DISPLAY }}>
                   {m.share}%
                 </div>
                 <div style={{ flex: 1, marginLeft: 8 }}>
@@ -385,24 +300,20 @@ export function TourismDashboard() {
               </div>
             ))}
           </div>
-          <div style={{
-            marginTop: 12, padding: '12px 14px',
-            background: colors.goldBg, border: `1px solid ${colors.gold}1A`,
-            borderRadius: 2, fontSize: 11, lineHeight: 1.6,
-          }}>
+          <div className="za-signal-box za-signal-box--gold" style={{ marginTop: 12, lineHeight: 1.6 }}>
             <span style={{ color: colors.gold, fontWeight: 600 }}>RE Signal: </span>
-            <span style={{ color: colors.textSecondary }}>{sourceMarkets[activeMarket].signal}</span>
+            <span>{sourceMarkets[activeMarket].signal}</span>
           </div>
         </div>
       </div>
 
       {/* ROW 3: STR Community Yield Matrix */}
-      <div className="tourism-grid-card" style={{ marginBottom: 16 }}>
+      <div className="za-card-subtle" style={{ marginBottom: 16 }}>
         <SectionHead colors={colors} tag="Short-Term Rental Intelligence" title="Community Yield Matrix"
           subtitle="STR performance by community — occupancy, ADR, and gross yield. 22,480 active listings. 85% DTCM licensed." />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           {strCommunities.map((c, i) => (
-            <div key={i} className="tourism-comm-card"
+            <div key={i} className="za-comm-card"
               style={{ background: hoveredComm === i ? colors.goldBg : colors.cardBg }}
               onMouseEnter={() => setHoveredComm(i)}
               onMouseLeave={() => setHoveredComm(null)}>
@@ -413,17 +324,17 @@ export function TourismDashboard() {
                 </div>
                 <div style={{
                   fontSize: 20, fontWeight: 300, color: c.yield >= 7 ? colors.green : colors.gold,
-                  fontFamily: "'Cormorant Garamond', serif",
+                  fontFamily: FONT_DISPLAY,
                 }}>{c.yield}%</div>
               </div>
               <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.1em', marginBottom: 3 }}>OCC</div>
-                  <div style={{ fontSize: 16, color: colors.text, fontFamily: "'Cormorant Garamond', serif" }}>{c.occ}%</div>
+                  <div className="za-data-label">OCC</div>
+                  <div className="za-data-value">{c.occ}%</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.1em', marginBottom: 3 }}>ADR</div>
-                  <div style={{ fontSize: 16, color: colors.text, fontFamily: "'Cormorant Garamond', serif" }}>{c.adr}</div>
+                  <div className="za-data-label">ADR</div>
+                  <div className="za-data-value">{c.adr}</div>
                 </div>
               </div>
               <div style={{ height: 3, background: colors.cardBorder, borderRadius: 2, overflow: 'hidden' }}>
@@ -437,25 +348,13 @@ export function TourismDashboard() {
           ))}
         </div>
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-          <div style={{
-            padding: '10px 14px', background: colors.greenBg,
-            border: `1px solid ${colors.green}1A`, borderRadius: 2,
-            fontSize: 11, color: colors.textSecondary, lineHeight: 1.5,
-          }}>
+          <div className="za-signal-box za-signal-box--green">
             <span style={{ color: colors.green, fontWeight: 600 }}>Highest Yield:</span> JVC at 8.0% — lowest entry price, strongest tenant turnover.
           </div>
-          <div style={{
-            padding: '10px 14px', background: colors.goldBg,
-            border: `1px solid ${colors.gold}1A`, borderRadius: 2,
-            fontSize: 11, color: colors.textSecondary, lineHeight: 1.5,
-          }}>
+          <div className="za-signal-box za-signal-box--gold">
             <span style={{ color: colors.gold, fontWeight: 600 }}>Highest ADR:</span> Downtown at AED 975/night — Burj Khalifa proximity commands 60% premium.
           </div>
-          <div style={{
-            padding: '10px 14px', background: colors.cardBg,
-            border: `1px solid ${colors.cardBorder}`, borderRadius: 2,
-            fontSize: 11, color: colors.textSecondary, lineHeight: 1.5,
-          }}>
+          <div className="za-signal-box za-signal-box--muted">
             <span style={{ color: colors.text, fontWeight: 600 }}>36% YoY Growth:</span> STR sector expanding rapidly. 88.5% of guests are international.
           </div>
         </div>
@@ -463,7 +362,7 @@ export function TourismDashboard() {
 
       {/* ROW 4: Hotel Trend + Market Size */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="Hotel Benchmark" title="Hotel Performance Trajectory" subtitle="Hotel metrics set the ceiling for STR pricing." />
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={hotelPerformance.filter(d => d.occ)} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
@@ -479,16 +378,16 @@ export function TourismDashboard() {
           <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 16, height: 2, background: colors.gold }} />
-              <span style={{ fontSize: 11, color: colors.textSecondary }}>Occupancy (%)</span>
+              <span className="za-hint" style={{ color: colors.textSecondary }}>Occupancy (%)</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 16, height: 2, background: colors.green }} />
-              <span style={{ fontSize: 11, color: colors.textSecondary }}>ADR (AED)</span>
+              <span className="za-hint" style={{ color: colors.textSecondary }}>ADR (AED)</span>
             </div>
           </div>
         </div>
 
-        <div className="tourism-grid-card">
+        <div className="za-card-subtle">
           <SectionHead colors={colors} tag="Market Position" title="Dubai Hospitality at Scale" subtitle="What the numbers mean for real estate capital deployment." />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
             {[
@@ -503,17 +402,13 @@ export function TourismDashboard() {
                 padding: '12px 14px', background: colors.cardBg,
                 border: `1px solid ${colors.cardBorder}`, borderRadius: 2,
               }}>
-                <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 6, fontWeight: 500 }}>{item.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 300, color: colors.text, fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{item.val}</div>
+                <div className="za-data-label" style={{ letterSpacing: '0.15em', marginBottom: 6, fontWeight: 500 }}>{item.label}</div>
+                <div className="za-data-value-lg">{item.val}</div>
                 <div style={{ fontSize: 10, color: colors.textDim, marginTop: 4 }}>{item.sub}</div>
               </div>
             ))}
           </div>
-          <div style={{
-            marginTop: 14, padding: '10px 14px',
-            background: colors.goldBg, border: `1px solid ${colors.gold}1A`,
-            borderRadius: 2, fontSize: 11, color: colors.textSecondary, lineHeight: 1.6,
-          }}>
+          <div className="za-signal-box za-signal-box--gold" style={{ marginTop: 14, lineHeight: 1.6 }}>
             <span style={{ color: colors.gold, fontWeight: 600 }}>Bottom Line: </span>
             Dubai is adding visitors faster than rooms. Occupancy climbing despite supply growth.
             Structural tailwind for rental yields.
@@ -522,22 +417,16 @@ export function TourismDashboard() {
       </div>
 
       {/* FOOTER */}
-      <div style={{
-        marginTop: 24, padding: '16px 20px',
-        background: colors.cardBg,
-        border: `1px solid ${colors.cardBorder}`,
-        borderRadius: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        flexWrap: 'wrap', gap: 12,
-      }}>
+      <div className="za-footer">
         <div>
-          <div style={{ fontSize: 10, letterSpacing: '0.2em', color: colors.textDim, textTransform: 'uppercase', fontWeight: 600 }}>Data Provenance</div>
-          <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4, lineHeight: 1.6 }}>
+          <div className="za-section-tag" style={{ color: colors.textDim, marginBottom: 0 }}>Data Provenance</div>
+          <div className="za-hint" style={{ marginTop: 4, lineHeight: 1.6, color: colors.textSecondary }}>
             DET Official Reports · TourismAnalytics.com · Emirates NBD Research · STR/CoStar · Deloitte · Airbtics
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 10, letterSpacing: '0.2em', color: colors.textDim, textTransform: 'uppercase', fontWeight: 600 }}>ZeroAgent Bronze Layer</div>
-          <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>18 sources · 91 records · 10 tables</div>
+          <div className="za-section-tag" style={{ color: colors.textDim, marginBottom: 0 }}>ZeroAgent Bronze Layer</div>
+          <div className="za-hint" style={{ marginTop: 4, color: colors.textSecondary }}>18 sources · 91 records · 10 tables</div>
         </div>
       </div>
     </div>
