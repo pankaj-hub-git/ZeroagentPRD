@@ -8,6 +8,7 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 import { SatellitePage } from '@/pages/SatellitePage';
 import { FlipMomentumPage } from '@/pages/FlipMomentumPage';
 import { YieldIntelligencePage } from '@/pages/YieldIntelligencePage';
+import { PricePredictionPage } from '@/pages/PricePredictionPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -21,6 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/satellite" element={<SatellitePage />} />
           <Route path="/flip-momentum" element={<FlipMomentumPage />} />
           <Route path="/yield-intelligence" element={<YieldIntelligencePage />} />
+          <Route path="/price-prediction" element={<PricePredictionPage />} />
           <Route path="*" element={<HomePage />} />
         </Route>
       </Routes>
