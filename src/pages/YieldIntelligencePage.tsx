@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useTheme } from '@/lib/theme';
 
 // ═══════════════════════════════════════════════════════════════════
 // DUBAI HILLS ESTATE — YIELD INTELLIGENCE v3.0
@@ -101,16 +102,17 @@ const fmtM = (n: number) => (n / 1e6).toFixed(2) + "M";
 const fmtK = (n: number) => Math.round(n / 1000) + "K";
 
 // ─── TOGGLE SWITCH ───
-function Toggle({ on, onChange, color = "#22c55e" }: { on: boolean; onChange: () => void; color?: string }) {
+function Toggle({ on, onChange, color = "#22c55e", offBg = "#1a1a1e", offDot = "#444", offBorder = "#2a2a2e" }: { on: boolean; onChange: () => void; color?: string; offBg?: string; offDot?: string; offBorder?: string }) {
   return (
-    <div onClick={onChange} style={{ cursor: "pointer", width: 36, height: 20, borderRadius: 10, background: on ? color + "44" : "#1a1a1e", border: `1px solid ${on ? color + "66" : "#2a2a2e"}`, position: "relative", flexShrink: 0, transition: "all 0.2s" }}>
-      <div style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: on ? color : "#444", transition: "all 0.2s" }} />
+    <div onClick={onChange} style={{ cursor: "pointer", width: 36, height: 20, borderRadius: 10, background: on ? color + "44" : offBg, border: `1px solid ${on ? color + "66" : offBorder}`, position: "relative", flexShrink: 0, transition: "all 0.2s" }}>
+      <div style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: on ? color : offDot, transition: "all 0.2s" }} />
     </div>
   );
 }
 
 // ─── MAIN COMPONENT ───
 export function YieldIntelligencePage() {
+  const { colors } = useTheme();
   const [buildings, setBuildings] = useState<BuildingData[]>(STATIC_BUILDINGS);
   const [dataSource, setDataSource] = useState<"static" | "supabase" | "loading" | "error">("static");
   const [sbUrl, setSbUrl] = useState(DEFAULT_SUPABASE_URL);
@@ -207,32 +209,32 @@ export function YieldIntelligencePage() {
   const truthCount = buildings.filter(b => b.status === "truth").length;
   const predCount = buildings.filter(b => b.status === "predicted").length;
 
-  if (!bldg || !unit || !y) return <div style={{ color: "#555", padding: 40, textAlign: "center" }}>Loading data...</div>;
+  if (!bldg || !unit || !y) return <div style={{ color: colors.textDim, padding: 40, textAlign: "center" }}>Loading data...</div>;
 
   return (
-    <div style={{ height: "calc(100vh - 56px)", overflow: "auto", background: "#060608", color: "#e0e0e0", fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif", position: "relative" }}>
+    <div style={{ height: "calc(100vh - 56px)", overflow: "auto", background: colors.bg, color: colors.text, fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif", position: "relative" }}>
 
       {/* ─── HEADER ─── */}
-      <div style={{ padding: "12px 20px", borderBottom: "1px solid #141418", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#c9a84c" }} />
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "2.5px", color: "#c9a84c" }}>ZEROAGENT</span>
-          <span style={{ fontSize: 10, color: "#444", letterSpacing: "1px" }}>YIELD INTELLIGENCE v3</span>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: colors.gold }} />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "2.5px", color: colors.gold }}>ZEROAGENT</span>
+          <span style={{ fontSize: 10, color: colors.textDim, letterSpacing: "1px" }}>YIELD INTELLIGENCE v3</span>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <div style={{ fontSize: 9, padding: "3px 8px", borderRadius: 3, fontWeight: 700, letterSpacing: "0.8px",
-            background: dataSource === "supabase" ? "#3b82f615" : dataSource === "loading" ? "#c9a84c15" : dataSource === "error" ? "#ef444415" : "#55555515",
-            color: dataSource === "supabase" ? "#3b82f6" : dataSource === "loading" ? "#c9a84c" : dataSource === "error" ? "#ef4444" : "#555"
+            background: dataSource === "supabase" ? colors.blueBg : dataSource === "loading" ? colors.goldBg : dataSource === "error" ? colors.redBg : colors.cardBg,
+            color: dataSource === "supabase" ? colors.blue : dataSource === "loading" ? colors.gold : dataSource === "error" ? colors.red : colors.textDim
           }}>
             {dataSource === "supabase" ? "SUPABASE LIVE" : dataSource === "loading" ? "CONNECTING..." : dataSource === "error" ? "SB ERROR" : "STATIC DATA"}
           </div>
-          <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 3, background: "#22c55e15", color: "#22c55e", fontWeight: 700, letterSpacing: "0.8px" }}>{truthCount} VERIFIED</span>
-          <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 3, background: "#f59e0b15", color: "#f59e0b", fontWeight: 700, letterSpacing: "0.8px" }}>{predCount} PREDICTED</span>
-          <div onClick={() => setShowSCPanel(true)} style={{ cursor: "pointer", fontSize: 9, padding: "3px 10px", borderRadius: 3, background: "#c9a84c12", color: "#c9a84c", fontWeight: 700, letterSpacing: "0.8px", border: "1px solid #c9a84c22", display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 3, background: colors.greenBg, color: colors.green, fontWeight: 700, letterSpacing: "0.8px" }}>{truthCount} VERIFIED</span>
+          <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 3, background: colors.orangeBg, color: colors.orange, fontWeight: 700, letterSpacing: "0.8px" }}>{predCount} PREDICTED</span>
+          <div onClick={() => setShowSCPanel(true)} style={{ cursor: "pointer", fontSize: 9, padding: "3px 10px", borderRadius: 3, background: colors.goldBg, color: colors.gold, fontWeight: 700, letterSpacing: "0.8px", border: `1px solid ${colors.gold}22`, display: "flex", alignItems: "center", gap: 5 }}>
             SC CHARGES
-            <span style={{ background: "#c9a84c22", borderRadius: 2, padding: "1px 5px" }}>{aptOnCount}/{aptBuildings.length} APT · {villaOnCount}/{villaBuildings.length} VIL</span>
+            <span style={{ background: colors.gold + "22", borderRadius: 2, padding: "1px 5px" }}>{aptOnCount}/{aptBuildings.length} APT · {villaOnCount}/{villaBuildings.length} VIL</span>
           </div>
-          <div onClick={() => setShowSettings(!showSettings)} style={{ cursor: "pointer", fontSize: 9, padding: "3px 8px", borderRadius: 3, background: "#1a1a1e", color: "#555", fontWeight: 700, border: "1px solid #222" }}>
+          <div onClick={() => setShowSettings(!showSettings)} style={{ cursor: "pointer", fontSize: 9, padding: "3px 8px", borderRadius: 3, background: colors.border, color: colors.textDim, fontWeight: 700, border: `1px solid ${colors.border}` }}>
             DB
           </div>
         </div>
@@ -240,26 +242,26 @@ export function YieldIntelligencePage() {
 
       {/* ─── SUPABASE SETTINGS PANEL ─── */}
       {showSettings && (
-        <div style={{ background: "#0a0a0d", borderBottom: "1px solid #141418", padding: "16px 20px" }}>
+        <div style={{ background: colors.surface, borderBottom: `1px solid ${colors.border}`, padding: "16px 20px" }}>
           <div style={{ maxWidth: 700, margin: "0 auto" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", color: "#c9a84c", marginBottom: 10 }}>SUPABASE CONNECTION</div>
-            {sbError && <div style={{ fontSize: 10, color: "#ef4444", marginBottom: 8, padding: "6px 10px", background: "#ef444410", borderRadius: 4, border: "1px solid #ef444422" }}>{sbError}</div>}
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", color: colors.gold, marginBottom: 10 }}>SUPABASE CONNECTION</div>
+            {sbError && <div style={{ fontSize: 10, color: colors.red, marginBottom: 8, padding: "6px 10px", background: colors.redBg, borderRadius: 4, border: `1px solid ${colors.red}22` }}>{sbError}</div>}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input value={sbUrl} onChange={e => setSbUrl(e.target.value)} placeholder="https://xxxx.supabase.co"
-                style={{ flex: "1 1 260px", padding: "7px 10px", background: "#0c0c10", border: "1px solid #1a1a1e", borderRadius: 4, color: "#e0e0e0", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                style={{ flex: "1 1 260px", padding: "7px 10px", background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 4, color: colors.text, fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
               <input value={sbKey} onChange={e => setSbKey(e.target.value)} type="password" placeholder="anon public key"
-                style={{ flex: "1 1 260px", padding: "7px 10px", background: "#0c0c10", border: "1px solid #1a1a1e", borderRadius: 4, color: "#e0e0e0", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                style={{ flex: "1 1 260px", padding: "7px 10px", background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 4, color: colors.text, fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
               <button onClick={() => fetchFromSupabase(sbUrl, sbKey)}
-                style={{ padding: "7px 18px", background: "#c9a84c18", border: "1px solid #c9a84c33", borderRadius: 4, color: "#c9a84c", fontSize: 11, fontWeight: 700, cursor: "pointer", letterSpacing: "0.5px" }}>
+                style={{ padding: "7px 18px", background: colors.goldBg, border: `1px solid ${colors.gold}33`, borderRadius: 4, color: colors.gold, fontSize: 11, fontWeight: 700, cursor: "pointer", letterSpacing: "0.5px" }}>
                 CONNECT
               </button>
               <button onClick={() => { setBuildings(STATIC_BUILDINGS); setScToggles(Object.fromEntries(STATIC_BUILDINGS.map(b => [b.id, true]))); setDataSource("static"); setSbError(""); }}
-                style={{ padding: "7px 14px", background: "#1a1a1e", border: "1px solid #222", borderRadius: 4, color: "#555", fontSize: 11, cursor: "pointer" }}>
+                style={{ padding: "7px 14px", background: colors.border, border: `1px solid ${colors.border}`, borderRadius: 4, color: colors.textDim, fontSize: 11, cursor: "pointer" }}>
                 USE STATIC
               </button>
             </div>
-            <div style={{ fontSize: 9, color: "#333", marginTop: 8, lineHeight: 1.6 }}>
-              Expects tables: <span style={{ color: "#555", fontFamily: "monospace" }}>dhe_buildings</span> (id, name, type, status, handover, developer, construction_pct, source, comp) + <span style={{ color: "#555", fontFamily: "monospace" }}>dhe_units</span> (id, building_id, bed, sqft, avg_sale_price, avg_rent, service_charge_psf)
+            <div style={{ fontSize: 9, color: colors.textDim, marginTop: 8, lineHeight: 1.6 }}>
+              Expects tables: <span style={{ color: colors.textDim, fontFamily: "monospace" }}>dhe_buildings</span> (id, name, type, status, handover, developer, construction_pct, source, comp) + <span style={{ color: colors.textDim, fontFamily: "monospace" }}>dhe_units</span> (id, building_id, bed, sqft, avg_sale_price, avg_rent, service_charge_psf)
             </div>
           </div>
         </div>
@@ -267,14 +269,14 @@ export function YieldIntelligencePage() {
 
       {/* ─── SC COMMUNITY TOGGLE PANEL (DRAWER) ─── */}
       {showSCPanel && (
-        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 320, background: "#08080b", borderLeft: "1px solid #141418", zIndex: 100, overflow: "auto", boxShadow: "-20px 0 60px #00000088" }}>
-          <div style={{ padding: "16px 16px 0", position: "sticky", top: 0, background: "#08080b", borderBottom: "1px solid #141418", paddingBottom: 12 }}>
+        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 320, background: colors.bg, borderLeft: `1px solid ${colors.border}`, zIndex: 100, overflow: "auto", boxShadow: "-20px 0 60px #00000088" }}>
+          <div style={{ padding: "16px 16px 0", position: "sticky", top: 0, background: colors.bg, borderBottom: `1px solid ${colors.border}`, paddingBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", color: "#c9a84c" }}>SERVICE CHARGE TOGGLES</div>
-                <div style={{ fontSize: 9, color: "#444", marginTop: 2 }}>Toggle SC inclusion per community by masterplan type</div>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", color: colors.gold }}>SERVICE CHARGE TOGGLES</div>
+                <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>Toggle SC inclusion per community by masterplan type</div>
               </div>
-              <div onClick={() => setShowSCPanel(false)} style={{ cursor: "pointer", color: "#555", fontSize: 18, lineHeight: 1 }}>x</div>
+              <div onClick={() => setShowSCPanel(false)} style={{ cursor: "pointer", color: colors.textDim, fontSize: 18, lineHeight: 1 }}>x</div>
             </div>
           </div>
 
@@ -283,38 +285,38 @@ export function YieldIntelligencePage() {
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", color: "#3b82f6" }}>APARTMENTS</span>
-                  <span style={{ fontSize: 9, color: "#444", marginLeft: 8 }}>{aptOnCount} of {aptBuildings.length} communities with SC</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", color: colors.blue }}>APARTMENTS</span>
+                  <span style={{ fontSize: 9, color: colors.textDim, marginLeft: 8 }}>{aptOnCount} of {aptBuildings.length} communities with SC</span>
                 </div>
                 <div style={{ display: "flex", gap: 5 }}>
-                  <div onClick={() => toggleAll("Apartment", true)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: "#3b82f615", color: "#3b82f6", fontWeight: 700, border: "1px solid #3b82f622" }}>ALL ON</div>
-                  <div onClick={() => toggleAll("Apartment", false)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: "#1a1a1e", color: "#555", fontWeight: 700, border: "1px solid #222" }}>ALL OFF</div>
+                  <div onClick={() => toggleAll("Apartment", true)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: colors.blueBg, color: colors.blue, fontWeight: 700, border: `1px solid ${colors.blue}22` }}>ALL ON</div>
+                  <div onClick={() => toggleAll("Apartment", false)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: colors.border, color: colors.textDim, fontWeight: 700, border: `1px solid ${colors.border}` }}>ALL OFF</div>
                 </div>
               </div>
 
-              <div style={{ height: 3, background: "#111", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(aptOnCount / aptBuildings.length) * 100}%`, background: "#3b82f666", borderRadius: 2, transition: "width 0.3s" }} />
+              <div style={{ height: 3, background: colors.border, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(aptOnCount / aptBuildings.length) * 100}%`, background: colors.blue + "66", borderRadius: 2, transition: "width 0.3s" }} />
               </div>
 
               {aptBuildings.map(b => {
                 const on = scToggles[b.id] !== false;
                 const avgSC = b.units?.length > 0 ? b.units.reduce((s, u) => s + u.serviceChargePSF, 0) / b.units.length : 0;
                 return (
-                  <div key={b.id} style={{ marginBottom: 8, padding: "9px 10px", background: on ? "#0c0c12" : "#090909", borderRadius: 5, border: `1px solid ${on ? "#1a1a22" : "#111"}`, transition: "all 0.2s" }}>
+                  <div key={b.id} style={{ marginBottom: 8, padding: "9px 10px", background: on ? colors.surface : colors.bg, borderRadius: 5, border: `1px solid ${on ? colors.border : colors.border}`, transition: "all 0.2s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 11, color: on ? "#ccc" : "#444", fontWeight: 500, transition: "color 0.2s" }}>{b.name}</span>
-                          <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 2, background: b.status === "truth" ? "#22c55e12" : "#f59e0b12", color: b.status === "truth" ? "#22c55e" : "#f59e0b" }}>
+                          <span style={{ fontSize: 11, color: on ? colors.text : colors.textDim, fontWeight: 500, transition: "color 0.2s" }}>{b.name}</span>
+                          <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 2, background: b.status === "truth" ? colors.greenBg : colors.orangeBg, color: b.status === "truth" ? colors.green : colors.orange }}>
                             {b.status === "truth" ? "V" : "+"}
                           </span>
                         </div>
-                        <div style={{ fontSize: 9, color: on ? "#444" : "#2a2a2a", marginTop: 2, transition: "color 0.2s" }}>
+                        <div style={{ fontSize: 9, color: on ? colors.textDim : colors.textDim, marginTop: 2, transition: "color 0.2s" }}>
                           avg {avgSC.toFixed(1)} AED/sqft SC · {b.units?.length} unit types
-                          {!on && <span style={{ color: "#ef444466", marginLeft: 6 }}>SC EXCLUDED</span>}
+                          {!on && <span style={{ color: colors.red + "66", marginLeft: 6 }}>SC EXCLUDED</span>}
                         </div>
                       </div>
-                      <Toggle on={on} onChange={() => setScToggles(prev => ({ ...prev, [b.id]: !on }))} color="#3b82f6" />
+                      <Toggle on={on} onChange={() => setScToggles(prev => ({ ...prev, [b.id]: !on }))} color={colors.blue} offBg={colors.border} offDot={colors.textDim} offBorder={colors.textDim} />
                     </div>
                   </div>
                 );
@@ -325,38 +327,38 @@ export function YieldIntelligencePage() {
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", color: "#22c55e" }}>VILLAS</span>
-                  <span style={{ fontSize: 9, color: "#444", marginLeft: 8 }}>{villaOnCount} of {villaBuildings.length} communities with SC</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", color: colors.green }}>VILLAS</span>
+                  <span style={{ fontSize: 9, color: colors.textDim, marginLeft: 8 }}>{villaOnCount} of {villaBuildings.length} communities with SC</span>
                 </div>
                 <div style={{ display: "flex", gap: 5 }}>
-                  <div onClick={() => toggleAll("Villa", true)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: "#22c55e15", color: "#22c55e", fontWeight: 700, border: "1px solid #22c55e22" }}>ALL ON</div>
-                  <div onClick={() => toggleAll("Villa", false)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: "#1a1a1e", color: "#555", fontWeight: 700, border: "1px solid #222" }}>ALL OFF</div>
+                  <div onClick={() => toggleAll("Villa", true)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: colors.greenBg, color: colors.green, fontWeight: 700, border: `1px solid ${colors.green}22` }}>ALL ON</div>
+                  <div onClick={() => toggleAll("Villa", false)} style={{ cursor: "pointer", fontSize: 8, padding: "2px 7px", borderRadius: 2, background: colors.border, color: colors.textDim, fontWeight: 700, border: `1px solid ${colors.border}` }}>ALL OFF</div>
                 </div>
               </div>
 
-              <div style={{ height: 3, background: "#111", borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(villaOnCount / villaBuildings.length) * 100}%`, background: "#22c55e66", borderRadius: 2, transition: "width 0.3s" }} />
+              <div style={{ height: 3, background: colors.border, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(villaOnCount / villaBuildings.length) * 100}%`, background: colors.green + "66", borderRadius: 2, transition: "width 0.3s" }} />
               </div>
 
               {villaBuildings.map(b => {
                 const on = scToggles[b.id] !== false;
                 const avgSC = b.units?.length > 0 ? b.units.reduce((s, u) => s + u.serviceChargePSF, 0) / b.units.length : 0;
                 return (
-                  <div key={b.id} style={{ marginBottom: 8, padding: "9px 10px", background: on ? "#0c0c12" : "#090909", borderRadius: 5, border: `1px solid ${on ? "#1a1a22" : "#111"}`, transition: "all 0.2s" }}>
+                  <div key={b.id} style={{ marginBottom: 8, padding: "9px 10px", background: on ? colors.surface : colors.bg, borderRadius: 5, border: `1px solid ${on ? colors.border : colors.border}`, transition: "all 0.2s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 11, color: on ? "#ccc" : "#444", fontWeight: 500, transition: "color 0.2s" }}>{b.name}</span>
-                          <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 2, background: b.status === "truth" ? "#22c55e12" : "#f59e0b12", color: b.status === "truth" ? "#22c55e" : "#f59e0b" }}>
+                          <span style={{ fontSize: 11, color: on ? colors.text : colors.textDim, fontWeight: 500, transition: "color 0.2s" }}>{b.name}</span>
+                          <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 2, background: b.status === "truth" ? colors.greenBg : colors.orangeBg, color: b.status === "truth" ? colors.green : colors.orange }}>
                             {b.status === "truth" ? "V" : "+"}
                           </span>
                         </div>
-                        <div style={{ fontSize: 9, color: on ? "#444" : "#2a2a2a", marginTop: 2, transition: "color 0.2s" }}>
+                        <div style={{ fontSize: 9, color: on ? colors.textDim : colors.textDim, marginTop: 2, transition: "color 0.2s" }}>
                           avg {avgSC.toFixed(1)} AED/sqft SC · {b.units?.length} unit types
-                          {!on && <span style={{ color: "#ef444466", marginLeft: 6 }}>SC EXCLUDED</span>}
+                          {!on && <span style={{ color: colors.red + "66", marginLeft: 6 }}>SC EXCLUDED</span>}
                         </div>
                       </div>
-                      <Toggle on={on} onChange={() => setScToggles(prev => ({ ...prev, [b.id]: !on }))} color="#22c55e" />
+                      <Toggle on={on} onChange={() => setScToggles(prev => ({ ...prev, [b.id]: !on }))} color={colors.green} offBg={colors.border} offDot={colors.textDim} offBorder={colors.textDim} />
                     </div>
                   </div>
                 );
@@ -364,13 +366,13 @@ export function YieldIntelligencePage() {
             </div>
 
             {/* IMPACT SUMMARY */}
-            <div style={{ padding: 12, background: "#0c0c10", borderRadius: 6, border: "1px solid #1a1a1e" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "1px", color: "#c9a84c", marginBottom: 8 }}>SC COVERAGE IMPACT</div>
-              <div style={{ fontSize: 10, color: "#555", lineHeight: 1.7 }}>
-                <div>Apartments: <span style={{ color: "#3b82f6" }}>{aptOnCount}/{aptBuildings.length}</span> communities include SC in yield calc</div>
-                <div>Villas: <span style={{ color: "#22c55e" }}>{villaOnCount}/{villaBuildings.length}</span> communities include SC in yield calc</div>
-                <div style={{ marginTop: 6, color: "#444" }}>
-                  Toggling off SC will <span style={{ color: "#f59e0b" }}>inflate yields</span> — use to model gross-of-SC scenarios or if management covers charges
+            <div style={{ padding: 12, background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}` }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "1px", color: colors.gold, marginBottom: 8 }}>SC COVERAGE IMPACT</div>
+              <div style={{ fontSize: 10, color: colors.textDim, lineHeight: 1.7 }}>
+                <div>Apartments: <span style={{ color: colors.blue }}>{aptOnCount}/{aptBuildings.length}</span> communities include SC in yield calc</div>
+                <div>Villas: <span style={{ color: colors.green }}>{villaOnCount}/{villaBuildings.length}</span> communities include SC in yield calc</div>
+                <div style={{ marginTop: 6, color: colors.textDim }}>
+                  Toggling off SC will <span style={{ color: colors.orange }}>inflate yields</span> — use to model gross-of-SC scenarios or if management covers charges
                 </div>
               </div>
             </div>
@@ -379,14 +381,14 @@ export function YieldIntelligencePage() {
       )}
 
       {/* overlay for SC panel */}
-      {showSCPanel && <div onClick={() => setShowSCPanel(false)} style={{ position: "fixed", inset: 0, background: "#00000044", zIndex: 99 }} />}
+      {showSCPanel && <div onClick={() => setShowSCPanel(false)} style={{ position: "fixed", inset: 0, background: colors.bg + "88", zIndex: 99 }} />}
 
       {/* ─── TITLE ─── */}
       <div style={{ padding: "28px 20px 12px", textAlign: "center" }}>
-        <div style={{ fontSize: 10, letterSpacing: "3px", color: "#555", fontWeight: 600 }}>DUBAI HILLS ESTATE · MASTERPLAN</div>
+        <div style={{ fontSize: 10, letterSpacing: "3px", color: colors.textDim, fontWeight: 600 }}>DUBAI HILLS ESTATE · MASTERPLAN</div>
         <h1 style={{ fontSize: 28, fontWeight: 300, margin: "8px 0 4px", letterSpacing: "0.5px" }}>Real Yield Intelligence</h1>
-        <p style={{ fontSize: 12, color: "#555", maxWidth: 600, margin: "0 auto" }}>
-          Truth + prediction layers · Toggle service charges per community via <span onClick={() => setShowSCPanel(true)} style={{ color: "#c9a84c", cursor: "pointer", textDecoration: "underline dotted" }}>SC Charges panel</span>
+        <p style={{ fontSize: 12, color: colors.textDim, maxWidth: 600, margin: "0 auto" }}>
+          Truth + prediction layers · Toggle service charges per community via <span onClick={() => setShowSCPanel(true)} style={{ color: colors.gold, cursor: "pointer", textDecoration: "underline dotted" }}>SC Charges panel</span>
         </p>
       </div>
 
@@ -397,7 +399,7 @@ export function YieldIntelligencePage() {
           if (!group.length) return null;
           return (
             <div key={type} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 8, letterSpacing: "1.5px", color: "#333", fontWeight: 700, marginBottom: 5, textAlign: "center" }}>{type.toUpperCase()}S</div>
+              <div style={{ fontSize: 8, letterSpacing: "1.5px", color: colors.textDim, fontWeight: 700, marginBottom: 5, textAlign: "center" }}>{type.toUpperCase()}S</div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
                 {group.map(b => {
                   const idx = buildings.indexOf(b);
@@ -406,13 +408,13 @@ export function YieldIntelligencePage() {
                     <div key={b.id} onClick={() => { setSelBldg(idx); setSelUnit(0); }}
                       style={{
                         padding: "5px 11px", borderRadius: 4, cursor: "pointer", fontSize: 10, fontWeight: 600, position: "relative",
-                        background: selBldg === idx ? (b.status === "truth" ? "#22c55e18" : "#f59e0b18") : "#0c0c10",
-                        color: selBldg === idx ? (b.status === "truth" ? "#22c55e" : "#f59e0b") : scOff ? "#333" : "#555",
-                        border: `1px solid ${selBldg === idx ? (b.status === "truth" ? "#22c55e33" : "#f59e0b33") : "#1a1a1e"}`,
+                        background: selBldg === idx ? (b.status === "truth" ? colors.greenBg : colors.orangeBg) : colors.surface,
+                        color: selBldg === idx ? (b.status === "truth" ? colors.green : colors.orange) : scOff ? colors.textDim : colors.textDim,
+                        border: `1px solid ${selBldg === idx ? (b.status === "truth" ? colors.green + "33" : colors.orange + "33") : colors.border}`,
                         transition: "all 0.15s", opacity: scOff && selBldg !== idx ? 0.5 : 1
                       }}>
                       {b.status === "predicted" && "+ "}{b.name}
-                      {scOff && <span style={{ marginLeft: 4, fontSize: 8, color: "#ef444466" }}>no SC</span>}
+                      {scOff && <span style={{ marginLeft: 4, fontSize: 8, color: colors.red + "66" }}>no SC</span>}
                     </div>
                   );
                 })}
@@ -427,9 +429,9 @@ export function YieldIntelligencePage() {
         {bldg.units?.map((u, i) => (
           <div key={i} onClick={() => setSelUnit(i)}
             style={{ padding: "5px 16px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: selUnit === i ? "#c9a84c18" : "#0c0c10",
-              color: selUnit === i ? "#c9a84c" : "#555",
-              border: `1px solid ${selUnit === i ? "#c9a84c33" : "#1a1a1e"}` }}>
+              background: selUnit === i ? colors.goldBg : colors.surface,
+              color: selUnit === i ? colors.gold : colors.textDim,
+              border: `1px solid ${selUnit === i ? colors.gold + "33" : colors.border}` }}>
             {u.bed}
           </div>
         ))}
@@ -438,46 +440,46 @@ export function YieldIntelligencePage() {
       {/* ─── STATUS + SC BANNER ─── */}
       <div style={{ textAlign: "center", marginBottom: 16 }}>
         <div style={{ display: "inline-flex", gap: 8, alignItems: "center", padding: "6px 16px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "1px",
-          background: bldg.status === "truth" ? "#22c55e10" : "#f59e0b10",
-          color: bldg.status === "truth" ? "#22c55e" : "#f59e0b",
-          border: `1px solid ${bldg.status === "truth" ? "#22c55e22" : "#f59e0b22"}` }}>
+          background: bldg.status === "truth" ? colors.greenBg : colors.orangeBg,
+          color: bldg.status === "truth" ? colors.green : colors.orange,
+          border: `1px solid ${bldg.status === "truth" ? colors.green + "22" : colors.orange + "22"}` }}>
           <span>{bldg.status === "truth" ? "VERIFIED" : `PREDICTED · ${bldg.constructionPct}% · ${bldg.handover}`}</span>
           <span style={{ width: 1, height: 12, background: "currentColor", opacity: 0.2 }} />
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
             SC CHARGES:
-            <Toggle on={scOn} onChange={() => setScToggles(prev => ({ ...prev, [bldg.id]: !scOn }))} color={bldg.type === "Villa" ? "#22c55e" : "#3b82f6"} />
-            <span style={{ color: scOn ? "#aaa" : "#ef4444" }}>{scOn ? "INCLUDED" : "EXCLUDED"}</span>
+            <Toggle on={scOn} onChange={() => setScToggles(prev => ({ ...prev, [bldg.id]: !scOn }))} color={bldg.type === "Villa" ? colors.green : colors.blue} offBg={colors.border} offDot={colors.textDim} offBorder={colors.textDim} />
+            <span style={{ color: scOn ? colors.textSecondary : colors.red }}>{scOn ? "INCLUDED" : "EXCLUDED"}</span>
           </span>
         </div>
-        <div style={{ fontSize: 10, color: "#444", marginTop: 5 }}>Source: {bldg.source}</div>
-        {bldg.comp && <div style={{ fontSize: 9, color: "#333", marginTop: 2 }}>Comp: {bldg.comp}</div>}
+        <div style={{ fontSize: 10, color: colors.textDim, marginTop: 5 }}>Source: {bldg.source}</div>
+        {bldg.comp && <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>Comp: {bldg.comp}</div>}
       </div>
 
       {/* ─── QUICK STATS ─── */}
       <div style={{ padding: "0 20px", marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, maxWidth: 860, margin: "0 auto" }}>
           {[
-            { l: "SALE PRICE", v: `AED ${fmtM(y.price)}`, c: "#e0e0e0" },
-            { l: "ANNUAL RENT", v: `AED ${fmtK(y.rent)}`, c: "#e0e0e0" },
-            { l: "SERVICE CHARGE", v: scOn ? `AED ${fmt(y.sc)}/yr` : "EXCLUDED", c: scOn ? (y.scPct > 20 ? "#ef4444" : y.scPct > 15 ? "#f59e0b" : "#22c55e") : "#ef4444" },
-            { l: "SC % OF RENT", v: scOn ? `${y.scPct.toFixed(1)}%` : "--", c: scOn ? (y.scPct > 20 ? "#ef4444" : y.scPct > 15 ? "#f59e0b" : "#22c55e") : "#555" },
-            { l: "GROSS -> TRUE YIELD", v: `${y.gross.toFixed(1)}% -> ${y.trueY.toFixed(1)}%`, c: y.trueY >= 4 ? "#22c55e" : y.trueY >= 3 ? "#f59e0b" : "#ef4444" },
-            { l: "EROSION", v: `-${(y.gross - y.trueY).toFixed(1)} pts`, c: "#ef4444" },
+            { l: "SALE PRICE", v: `AED ${fmtM(y.price)}`, c: colors.text },
+            { l: "ANNUAL RENT", v: `AED ${fmtK(y.rent)}`, c: colors.text },
+            { l: "SERVICE CHARGE", v: scOn ? `AED ${fmt(y.sc)}/yr` : "EXCLUDED", c: scOn ? (y.scPct > 20 ? colors.red : y.scPct > 15 ? colors.orange : colors.green) : colors.red },
+            { l: "SC % OF RENT", v: scOn ? `${y.scPct.toFixed(1)}%` : "--", c: scOn ? (y.scPct > 20 ? colors.red : y.scPct > 15 ? colors.orange : colors.green) : colors.textDim },
+            { l: "GROSS -> TRUE YIELD", v: `${y.gross.toFixed(1)}% -> ${y.trueY.toFixed(1)}%`, c: y.trueY >= 4 ? colors.green : y.trueY >= 3 ? colors.orange : colors.red },
+            { l: "EROSION", v: `-${(y.gross - y.trueY).toFixed(1)} pts`, c: colors.red },
           ].map((s, i) => (
-            <div key={i} style={{ padding: "12px 10px", background: "#0c0c10", borderRadius: 6, border: "1px solid #1a1a1e", textAlign: "center" }}>
+            <div key={i} style={{ padding: "12px 10px", background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}`, textAlign: "center" }}>
               <div style={{ fontSize: 16, fontWeight: 400, color: s.c }}>{s.v}</div>
-              <div style={{ fontSize: 9, color: "#444", letterSpacing: "0.6px", marginTop: 3 }}>{s.l}</div>
+              <div style={{ fontSize: 9, color: colors.textDim, letterSpacing: "0.6px", marginTop: 3 }}>{s.l}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* ─── TABS ─── */}
-      <div style={{ borderBottom: "1px solid #141418", padding: "0 20px", display: "flex", gap: 0, justifyContent: "center" }}>
+      <div style={{ borderBottom: `1px solid ${colors.border}`, padding: "0 20px", display: "flex", gap: 0, justifyContent: "center" }}>
         {[{ key: "yields", label: "Yield Layers" }, { key: "waterfall", label: "Cost Waterfall" }, { key: "compare", label: "Cross-Building" }].map(t => (
           <div key={t.key} onClick={() => setTab(t.key)} style={{ padding: "10px 20px", fontSize: 11, fontWeight: 600, letterSpacing: "0.8px", cursor: "pointer",
-            color: tab === t.key ? "#c9a84c" : "#444",
-            borderBottom: tab === t.key ? "2px solid #c9a84c" : "2px solid transparent" }}>
+            color: tab === t.key ? colors.gold : colors.textDim,
+            borderBottom: tab === t.key ? `2px solid ${colors.gold}` : "2px solid transparent" }}>
             {t.label}
           </div>
         ))}
@@ -491,29 +493,29 @@ export function YieldIntelligencePage() {
           <div>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 16, fontWeight: 300, marginBottom: 4 }}>{bldg.name} — {unit.bed}</div>
-              <div style={{ fontSize: 11, color: "#555" }}>{unit.sqft} sqft · {bldg.type} · {bldg.developer}
-                {!scOn && <span style={{ marginLeft: 8, color: "#ef4444", fontSize: 10 }}>· SERVICE CHARGES EXCLUDED FROM CALC</span>}
+              <div style={{ fontSize: 11, color: colors.textDim }}>{unit.sqft} sqft · {bldg.type} · {bldg.developer}
+                {!scOn && <span style={{ marginLeft: 8, color: colors.red, fontSize: 10 }}>· SERVICE CHARGES EXCLUDED FROM CALC</span>}
               </div>
             </div>
             {[
-              { label: "Gross Yield (Agent Markets)", val: y.gross, color: "#22c55e", desc: "Rent / Price -- what agents advertise" },
-              { label: "Net of Service Charge", val: y.netSC, color: "#3b82f6", desc: scOn ? `After AED ${fmt(y.sc)}/yr SC (${y.scPct.toFixed(1)}% of rent)` : `SC EXCLUDED -- raw SC would be AED ${fmt(y.rawSC)}/yr (${y.scPct.toFixed(1)}% of rent)` },
-              { label: "Real Yield (All Costs)", val: y.real, color: "#f59e0b", desc: `After ${scOn ? "SC +" : "(no SC) +"} Insurance + Maintenance 1% + Vacancy ${VACANCY_WK}wk` },
-              { label: "True Yield (Capital Deployed)", val: y.trueY, color: "#ef4444", desc: `After DLD 4% + Agency 2% + Trustee on AED ${fmtM(y.acq)} total` },
+              { label: "Gross Yield (Agent Markets)", val: y.gross, color: colors.green, desc: "Rent / Price -- what agents advertise" },
+              { label: "Net of Service Charge", val: y.netSC, color: colors.blue, desc: scOn ? `After AED ${fmt(y.sc)}/yr SC (${y.scPct.toFixed(1)}% of rent)` : `SC EXCLUDED -- raw SC would be AED ${fmt(y.rawSC)}/yr (${y.scPct.toFixed(1)}% of rent)` },
+              { label: "Real Yield (All Costs)", val: y.real, color: colors.orange, desc: `After ${scOn ? "SC +" : "(no SC) +"} Insurance + Maintenance 1% + Vacancy ${VACANCY_WK}wk` },
+              { label: "True Yield (Capital Deployed)", val: y.trueY, color: colors.red, desc: `After DLD 4% + Agency 2% + Trustee on AED ${fmtM(y.acq)} total` },
             ].map((layer, i) => (
               <div key={i} style={{ marginBottom: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: "#888" }}>{layer.label}</span>
+                  <span style={{ fontSize: 12, color: colors.textSecondary }}>{layer.label}</span>
                   <span style={{ fontSize: 18, fontWeight: 600, color: layer.color, fontFamily: "'JetBrains Mono', monospace" }}>{layer.val.toFixed(2)}%</span>
                 </div>
-                <div style={{ height: 8, background: "#111", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: 8, background: colors.border, borderRadius: 4, overflow: "hidden" }}>
                   <div style={{ height: "100%", width: `${Math.max(0, layer.val) / 8 * 100}%`, background: layer.color + "66", borderRadius: 4, transition: "width 0.5s" }} />
                 </div>
-                <div style={{ fontSize: 10, color: "#444", marginTop: 2 }}>{layer.desc}</div>
+                <div style={{ fontSize: 10, color: colors.textDim, marginTop: 2 }}>{layer.desc}</div>
               </div>
             ))}
-            <div style={{ marginTop: 20, padding: 14, background: "#0c0c10", borderRadius: 6, border: "1px solid #1a1a1e" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "#888", marginBottom: 8 }}>Cost Breakdown (Annual)</div>
+            <div style={{ marginTop: 20, padding: 14, background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary, marginBottom: 8 }}>Cost Breakdown (Annual)</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                 {[
                   { l: scOn ? "Service Charge" : "Service Charge (EXCLUDED)", v: scOn ? y.sc : 0, dim: !scOn },
@@ -521,24 +523,24 @@ export function YieldIntelligencePage() {
                   { l: "Maintenance (1%)", v: y.maint, dim: false },
                   { l: `Vacancy (${VACANCY_WK}wk)`, v: y.vac, dim: false },
                 ].map((c, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: c.dim ? "#333" : "#666" }}>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: c.dim ? colors.textDim : colors.textDim }}>
                     <span>{c.l}</span>
-                    <span style={{ color: c.dim ? "#2a2a2a" : "#999", fontFamily: "'JetBrains Mono', monospace" }}>
+                    <span style={{ color: c.dim ? colors.textDim : colors.textSecondary, fontFamily: "'JetBrains Mono', monospace" }}>
                       {c.dim ? "--" : `AED ${fmt(c.v)}`}
                     </span>
                   </div>
                 ))}
-                <div style={{ gridColumn: "1 / -1", borderTop: "1px solid #1a1a1e", paddingTop: 6, display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600 }}>
-                  <span style={{ color: "#888" }}>Total Annual Costs</span>
-                  <span style={{ color: "#ef4444", fontFamily: "'JetBrains Mono', monospace" }}>AED {fmt(y.totalCost)}</span>
+                <div style={{ gridColumn: "1 / -1", borderTop: `1px solid ${colors.border}`, paddingTop: 6, display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600 }}>
+                  <span style={{ color: colors.textSecondary }}>Total Annual Costs</span>
+                  <span style={{ color: colors.red, fontFamily: "'JetBrains Mono', monospace" }}>AED {fmt(y.totalCost)}</span>
                 </div>
                 <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600 }}>
-                  <span style={{ color: "#888" }}>Net Income</span>
-                  <span style={{ color: "#22c55e", fontFamily: "'JetBrains Mono', monospace" }}>AED {fmt(y.netIncome)}</span>
+                  <span style={{ color: colors.textSecondary }}>Net Income</span>
+                  <span style={{ color: colors.green, fontFamily: "'JetBrains Mono', monospace" }}>AED {fmt(y.netIncome)}</span>
                 </div>
               </div>
               {!scOn && (
-                <div style={{ marginTop: 8, padding: "6px 10px", background: "#ef444410", borderRadius: 4, border: "1px solid #ef444420", fontSize: 10, color: "#ef4444" }}>
+                <div style={{ marginTop: 8, padding: "6px 10px", background: colors.redBg, borderRadius: 4, border: `1px solid ${colors.red}20`, fontSize: 10, color: colors.red }}>
                   SC excluded from this calc. Raw SC would be AED {fmt(y.rawSC)}/yr ({y.scPct.toFixed(1)}% of rent) -- toggle ON for full picture
                 </div>
               )}
@@ -550,35 +552,35 @@ export function YieldIntelligencePage() {
         {tab === "waterfall" && (
           <div>
             <div style={{ fontSize: 16, fontWeight: 300, marginBottom: 16 }}>Cost Waterfall — {bldg.name} {unit.bed}
-              {!scOn && <span style={{ fontSize: 11, color: "#ef4444", marginLeft: 8 }}>(SC excluded)</span>}
+              {!scOn && <span style={{ fontSize: 11, color: colors.red, marginLeft: 8 }}>(SC excluded)</span>}
             </div>
             {(() => {
               const steps = [
-                { label: "Gross Rent", value: y.rent, cumulative: y.rent, color: "#22c55e" },
-                { label: scOn ? `- Service Charge (${y.scPct.toFixed(0)}%)` : "- Service Charge (EXCLUDED)", value: scOn ? -y.sc : 0, cumulative: y.rent - y.sc, color: scOn ? "#ef4444" : "#333" },
-                { label: "- Insurance", value: -INSURANCE, cumulative: y.rent - y.sc - INSURANCE, color: "#ef4444" },
-                { label: "- Maintenance 1%", value: -y.maint, cumulative: y.rent - y.sc - INSURANCE - y.maint, color: "#ef4444" },
-                { label: `- Vacancy ${VACANCY_WK}wk`, value: -y.vac, cumulative: y.netIncome, color: "#ef4444" },
-                { label: "= Net Income", value: y.netIncome, cumulative: y.netIncome, color: "#3b82f6" },
+                { label: "Gross Rent", value: y.rent, cumulative: y.rent, color: colors.green },
+                { label: scOn ? `- Service Charge (${y.scPct.toFixed(0)}%)` : "- Service Charge (EXCLUDED)", value: scOn ? -y.sc : 0, cumulative: y.rent - y.sc, color: scOn ? colors.red : colors.textDim },
+                { label: "- Insurance", value: -INSURANCE, cumulative: y.rent - y.sc - INSURANCE, color: colors.red },
+                { label: "- Maintenance 1%", value: -y.maint, cumulative: y.rent - y.sc - INSURANCE - y.maint, color: colors.red },
+                { label: `- Vacancy ${VACANCY_WK}wk`, value: -y.vac, cumulative: y.netIncome, color: colors.red },
+                { label: "= Net Income", value: y.netIncome, cumulative: y.netIncome, color: colors.blue },
               ];
               const maxVal = y.rent * 1.05;
               return steps.map((s, i) => (
                 <div key={i} style={{ marginBottom: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span style={{ color: s.value === 0 && i > 0 ? "#333" : "#888" }}>{s.label}</span>
+                    <span style={{ color: s.value === 0 && i > 0 ? colors.textDim : colors.textSecondary }}>{s.label}</span>
                     <span style={{ color: s.color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
                       {s.value === 0 && i > 0 ? "--" : `AED ${fmt(Math.abs(s.value))}`}
                     </span>
                   </div>
-                  <div style={{ height: 10, background: "#111", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${Math.max(0, s.cumulative) / maxVal * 100}%`, background: i === steps.length - 1 ? "#3b82f6" : (i === 0 ? "#22c55e44" : "#22c55e22"), borderRadius: 4, transition: "width 0.5s" }} />
+                  <div style={{ height: 10, background: colors.border, borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.max(0, s.cumulative) / maxVal * 100}%`, background: i === steps.length - 1 ? colors.blue : (i === 0 ? colors.green + "44" : colors.green + "22"), borderRadius: 4, transition: "width 0.5s" }} />
                   </div>
                 </div>
               ));
             })()}
-            <div style={{ marginTop: 16, padding: 12, background: "#0c0c10", borderRadius: 6, border: "1px solid #1a1a1e", textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "#555" }}>AED {fmt(y.rent)} gross -&gt; AED {fmt(y.netIncome)} net = {((y.netIncome / y.rent) * 100).toFixed(0)}% retained</div>
-              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>{(100 - (y.netIncome / y.rent) * 100).toFixed(0)}% of rent goes to costs</div>
+            <div style={{ marginTop: 16, padding: 12, background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}`, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: colors.textDim }}>AED {fmt(y.rent)} gross -&gt; AED {fmt(y.netIncome)} net = {((y.netIncome / y.rent) * 100).toFixed(0)}% retained</div>
+              <div style={{ fontSize: 10, color: colors.red, marginTop: 4 }}>{(100 - (y.netIncome / y.rent) * 100).toFixed(0)}% of rent goes to costs</div>
             </div>
           </div>
         )}
@@ -589,17 +591,17 @@ export function YieldIntelligencePage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 300 }}>All Buildings x Unit Types</div>
-                <div style={{ fontSize: 9, color: "#444", marginTop: 2 }}>
-                  Yields reflect your SC toggles — <span style={{ color: "#c9a84c", cursor: "pointer" }} onClick={() => setShowSCPanel(true)}>manage SC panel</span>
+                <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>
+                  Yields reflect your SC toggles — <span style={{ color: colors.gold, cursor: "pointer" }} onClick={() => setShowSCPanel(true)}>manage SC panel</span>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 4 }}>
                 {["all", "truth", "predicted"].map(f => (
                   <div key={f} onClick={() => setFilter(f)} style={{
                     padding: "4px 10px", borderRadius: 3, cursor: "pointer", fontSize: 10, fontWeight: 600,
-                    background: filter === f ? "#c9a84c18" : "#0c0c10",
-                    color: filter === f ? "#c9a84c" : "#555",
-                    border: `1px solid ${filter === f ? "#c9a84c33" : "#1a1a1e"}`,
+                    background: filter === f ? colors.goldBg : colors.surface,
+                    color: filter === f ? colors.gold : colors.textDim,
+                    border: `1px solid ${filter === f ? colors.gold + "33" : colors.border}`,
                     textTransform: "uppercase", letterSpacing: "0.5px"
                   }}>{f}</div>
                 ))}
@@ -608,46 +610,46 @@ export function YieldIntelligencePage() {
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #1a1a1e" }}>
+                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                     {["Building", "Unit", "Status", "SC", "Price", "Rent", "SC%", "Gross", "NetSC", "Real", "True", "Erode"].map((h, i) => (
-                      <th key={i} style={{ padding: "8px 6px", textAlign: "left", color: "#555", fontWeight: 600, fontSize: 9, letterSpacing: "0.5px" }}>{h}</th>
+                      <th key={i} style={{ padding: "8px 6px", textAlign: "left", color: colors.textDim, fontWeight: 600, fontSize: 9, letterSpacing: "0.5px" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.map((r, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #0f0f13" }}>
-                      <td style={{ padding: "6px", color: "#999", fontSize: 10, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.building}</td>
-                      <td style={{ padding: "6px", color: "#888" }}>{r.bed}</td>
+                    <tr key={i} style={{ borderBottom: `1px solid ${colors.surface}` }}>
+                      <td style={{ padding: "6px", color: colors.textSecondary, fontSize: 10, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.building}</td>
+                      <td style={{ padding: "6px", color: colors.textSecondary }}>{r.bed}</td>
                       <td style={{ padding: "6px" }}>
-                        <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 2, background: r.status === "truth" ? "#22c55e12" : "#f59e0b12", color: r.status === "truth" ? "#22c55e" : "#f59e0b" }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 2, background: r.status === "truth" ? colors.greenBg : colors.orangeBg, color: r.status === "truth" ? colors.green : colors.orange }}>
                           {r.status === "truth" ? "V" : "+"}
                         </span>
                       </td>
                       <td style={{ padding: "6px" }}>
-                        <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 2, background: r.scEnabled ? "#3b82f612" : "#ef444412", color: r.scEnabled ? "#3b82f6" : "#ef4444" }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 2, background: r.scEnabled ? colors.blueBg : colors.redBg, color: r.scEnabled ? colors.blue : colors.red }}>
                           {r.scEnabled ? "on" : "off"}
                         </span>
                       </td>
-                      <td style={{ padding: "6px", color: "#888", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{fmtM(r.price)}</td>
-                      <td style={{ padding: "6px", color: "#888", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{fmtK(r.rent)}</td>
-                      <td style={{ padding: "6px", color: r.scEnabled ? (r.scPct > 20 ? "#ef4444" : r.scPct > 15 ? "#f59e0b" : "#22c55e") : "#333", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>
+                      <td style={{ padding: "6px", color: colors.textSecondary, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{fmtM(r.price)}</td>
+                      <td style={{ padding: "6px", color: colors.textSecondary, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{fmtK(r.rent)}</td>
+                      <td style={{ padding: "6px", color: r.scEnabled ? (r.scPct > 20 ? colors.red : r.scPct > 15 ? colors.orange : colors.green) : colors.textDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>
                         {r.scEnabled ? `${r.scPct.toFixed(0)}%` : "--"}
                       </td>
-                      <td style={{ padding: "6px", color: "#22c55e", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.gross.toFixed(1)}</td>
-                      <td style={{ padding: "6px", color: "#3b82f6", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.netSC.toFixed(1)}</td>
-                      <td style={{ padding: "6px", color: "#f59e0b", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.real.toFixed(1)}</td>
-                      <td style={{ padding: "6px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: r.trueY >= 4 ? "#22c55e" : r.trueY >= 3 ? "#f59e0b" : "#ef4444" }}>{r.trueY.toFixed(1)}</td>
-                      <td style={{ padding: "6px", color: "#ef4444", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>-{(r.gross - r.trueY).toFixed(1)}</td>
+                      <td style={{ padding: "6px", color: colors.green, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.gross.toFixed(1)}</td>
+                      <td style={{ padding: "6px", color: colors.blue, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.netSC.toFixed(1)}</td>
+                      <td style={{ padding: "6px", color: colors.orange, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{r.real.toFixed(1)}</td>
+                      <td style={{ padding: "6px", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: r.trueY >= 4 ? colors.green : r.trueY >= 3 ? colors.orange : colors.red }}>{r.trueY.toFixed(1)}</td>
+                      <td style={{ padding: "6px", color: colors.red, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>-{(r.gross - r.trueY).toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div style={{ marginTop: 12, padding: 10, background: "#0c0c10", borderRadius: 6, border: "1px solid #1a1a1e" }}>
-              <div style={{ fontSize: 10, color: "#555" }}>
-                SC column: <span style={{ color: "#3b82f6" }}>on</span> = SC included in yield calc · <span style={{ color: "#ef4444" }}>off</span> = SC excluded ·
-                Sorted by True Yield · <span style={{ color: "#22c55e" }}>GREEN</span> &gt;=4% · <span style={{ color: "#f59e0b" }}>AMBER</span> 3-4% · <span style={{ color: "#ef4444" }}>RED</span> &lt;3%
+            <div style={{ marginTop: 12, padding: 10, background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}` }}>
+              <div style={{ fontSize: 10, color: colors.textDim }}>
+                SC column: <span style={{ color: colors.blue }}>on</span> = SC included in yield calc · <span style={{ color: colors.red }}>off</span> = SC excluded ·
+                Sorted by True Yield · <span style={{ color: colors.green }}>GREEN</span> &gt;=4% · <span style={{ color: colors.orange }}>AMBER</span> 3-4% · <span style={{ color: colors.red }}>RED</span> &lt;3%
               </div>
             </div>
           </div>
@@ -655,8 +657,8 @@ export function YieldIntelligencePage() {
       </div>
 
       {/* ─── FOOTER ─── */}
-      <div style={{ padding: "12px 20px", borderTop: "1px solid #141418" }}>
-        <div style={{ fontSize: 9, color: "#333", lineHeight: 1.6 }}>
+      <div style={{ padding: "12px 20px", borderTop: `1px solid ${colors.border}` }}>
+        <div style={{ fontSize: 9, color: colors.textDim, lineHeight: 1.6 }}>
           TRUTH: PropertyFinder (Feb 2026) · Bayut Ejari · RERA SC Index/Mollak · Driven Properties DHE Report (Jun 2025) · Emaar layouts<br />
           VERIFIED: DHE apt yields 6-8% gross / 5.1% villa · 45% apt / 68% villa appreciation 2022-&gt;Q1 2025 · Rents +52% · SC AED 15-22/sqft apt, 3-4/sqft villa<br />
           Sale prices = asking (DLD closed ~4% lower). SC % of rent is actual annual erosion. Individual yields +-1-2%. SC toggle = modelling tool only.

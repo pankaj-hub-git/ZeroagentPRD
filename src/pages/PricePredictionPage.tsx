@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useTheme } from "@/lib/theme";
 
 // ═══════════════════════════════════════════════════════════════════
 // ZEROAGENT ENGINE 12 — PREDICTIVE PRICING INTELLIGENCE
@@ -36,16 +37,7 @@ const sq = async (table: string, params = "") => {
   }
 };
 
-// ── TOKENS ────────────────────────────────────────────────
-const C = {
-  bg: "#05080f", card: "#0b1120", cardHi: "#0e172b",
-  border: "#162035", borderHi: "#1e3050",
-  accent: "#00e5a0", accentDim: "#002d20",
-  amber: "#ffb800", amberDim: "#2d2000",
-  red: "#ff3d5a", redDim: "#2d0010",
-  blue: "#4d9fff", blueDim: "#0a1f3d",
-  text: "#e8f0fe", dim: "#7a90b0", muted: "#3d5070",
-};
+// ── TOKENS (derived from theme inside component) ──────────
 
 const fmt = (n: number | null | undefined, dec = 2) => n != null ? Number(n).toFixed(dec) : "—";
 const fmtM = (n: number | null | undefined) => n != null ? `AED ${(Number(n) / 1e6).toFixed(2)}M` : "—";
@@ -55,69 +47,81 @@ const fmtPct = (n: number | string | null | undefined) => {
   return `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
 };
 
-// ── COMPONENTS ────────────────────────────────────────────
+// ── COMPONENTS (defined inside main component for theme access) ──
 type R = Record<string, any>;
-
-function Chip({ type, label }: { type: string; label?: string }) {
-  const styles: Record<string, { bg: string; col: string; dot: string }> = {
-    LIVE:      { bg: C.accentDim, col: C.accent, dot: "●" },
-    ESTIMATED: { bg: C.amberDim,  col: C.amber,  dot: "◈" },
-    GAP:       { bg: C.redDim,    col: C.red,     dot: "!" },
-  };
-  const s = styles[type] || styles.ESTIMATED;
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: s.bg, color: s.col,
-      padding: "2px 9px", borderRadius: 20, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>
-      {s.dot} {label || type}
-    </span>
-  );
-}
-
-function ScoreRing({ score, max = 100, label, color, size = 72 }: {
-  score: number | null | undefined; max?: number; label: string; color?: string; size?: number;
-}) {
-  const pct = Math.min(1, (Number(score) || 0) / max);
-  const r = (size - 10) / 2, circ = 2 * Math.PI * r;
-  return (
-    <div style={{ textAlign: "center" }}>
-      <svg width={size} height={size} style={{ display: "block", margin: "0 auto" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth={6} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color || C.accent} strokeWidth={6}
-          strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
-          strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: "stroke-dashoffset 1s ease" }} />
-        <text x={size / 2} y={size / 2 + 5} textAnchor="middle" fill={color || C.accent}
-          fontSize={14} fontWeight={700} fontFamily="monospace">{Math.round(Number(score) || 0)}</text>
-      </svg>
-      <div style={{ fontSize: 9, color: C.dim, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
-    </div>
-  );
-}
-
-function Section({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
-  return (
-    <div style={{ borderBottom: `2px solid ${C.accent}`, paddingBottom: 7, marginBottom: 12 }}>
-      <div style={{ color: C.accent, fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5 }}>
-        {icon} {title}
-      </div>
-      {sub && <div style={{ color: C.muted, fontSize: 10, marginTop: 1 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function Card({ children, style = {}, accent }: { children: React.ReactNode; style?: React.CSSProperties; accent?: boolean }) {
-  return (
-    <div style={{ background: C.card, border: `1px solid ${accent ? C.borderHi : C.border}`,
-      borderRadius: 12, padding: 18, ...(accent ? { boxShadow: `0 0 20px ${C.accentDim}` } : {}), ...style }}>
-      {children}
-    </div>
-  );
-}
 
 const TABS = ["Scorecard", "Prediction", "Yield Model", "Catalysts", "DNA"];
 
 // ── MAIN ──────────────────────────────────────────────────
 export function PricePredictionPage() {
+  const { colors } = useTheme();
+
+  const C = useMemo(() => ({
+    bg: colors.bg, card: colors.surface, cardHi: colors.cardBg,
+    border: colors.border, borderHi: colors.cardBorder,
+    accent: colors.green, accentDim: colors.greenBg,
+    amber: colors.orange, amberDim: colors.orangeBg,
+    red: colors.red, redDim: colors.redBg,
+    blue: colors.blue, blueDim: colors.blueBg,
+    text: colors.text, dim: colors.textSecondary, muted: colors.textDim,
+  }), [colors]);
+
+  function Chip({ type, label }: { type: string; label?: string }) {
+    const styles: Record<string, { bg: string; col: string; dot: string }> = {
+      LIVE:      { bg: C.accentDim, col: C.accent, dot: "●" },
+      ESTIMATED: { bg: C.amberDim,  col: C.amber,  dot: "◈" },
+      GAP:       { bg: C.redDim,    col: C.red,     dot: "!" },
+    };
+    const s = styles[type] || styles.ESTIMATED;
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: s.bg, color: s.col,
+        padding: "2px 9px", borderRadius: 20, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>
+        {s.dot} {label || type}
+      </span>
+    );
+  }
+
+  function ScoreRing({ score, max = 100, label, color, size = 72 }: {
+    score: number | null | undefined; max?: number; label: string; color?: string; size?: number;
+  }) {
+    const pct = Math.min(1, (Number(score) || 0) / max);
+    const r = (size - 10) / 2, circ = 2 * Math.PI * r;
+    return (
+      <div style={{ textAlign: "center" }}>
+        <svg width={size} height={size} style={{ display: "block", margin: "0 auto" }}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={C.border} strokeWidth={6} />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color || C.accent} strokeWidth={6}
+            strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
+            strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            style={{ transition: "stroke-dashoffset 1s ease" }} />
+          <text x={size / 2} y={size / 2 + 5} textAnchor="middle" fill={color || C.accent}
+            fontSize={14} fontWeight={700} fontFamily="monospace">{Math.round(Number(score) || 0)}</text>
+        </svg>
+        <div style={{ fontSize: 9, color: C.dim, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
+      </div>
+    );
+  }
+
+  function Section({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
+    return (
+      <div style={{ borderBottom: `2px solid ${C.accent}`, paddingBottom: 7, marginBottom: 12 }}>
+        <div style={{ color: C.accent, fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5 }}>
+          {icon} {title}
+        </div>
+        {sub && <div style={{ color: C.muted, fontSize: 10, marginTop: 1 }}>{sub}</div>}
+      </div>
+    );
+  }
+
+  function Card({ children, style = {}, accent }: { children: React.ReactNode; style?: React.CSSProperties; accent?: boolean }) {
+    return (
+      <div style={{ background: C.card, border: `1px solid ${accent ? C.borderHi : C.border}`,
+        borderRadius: 12, padding: 18, ...(accent ? { boxShadow: `0 0 20px ${C.accentDim}` } : {}), ...style }}>
+        {children}
+      </div>
+    );
+  }
+
   const [tab, setTab] = useState("Scorecard");
   const [loading, setLoading] = useState(true);
   const [D, setD] = useState<R | null>(null);
