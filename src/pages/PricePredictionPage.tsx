@@ -9,11 +9,31 @@ const SUPA = "https://awreaqilmwfpvaxwanpa.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3cmVhcWlsbXdmcHZheHdhbnBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMzE0NDAsImV4cCI6MjA4NjgwNzQ0MH0.uqn5tiC51OzrkeXOSD2nwIiePXkew471tbvz2TjbyFk";
 
 const sq = async (table: string, params = "") => {
-  const r = await fetch(`${SUPA}/rest/v1/${table}?${params}`, {
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }
-  });
-  if (!r.ok) throw new Error(`${table}: ${r.status}`);
-  return r.json();
+  // Handle schema-prefixed tables: "gold.property_scorecard" → table="property_scorecard", schema="gold"
+  let schema = "";
+  let tableName = table;
+  if (table.includes(".")) {
+    const parts = table.split(".");
+    schema = parts[0];
+    tableName = parts[1];
+  }
+  const headers: Record<string, string> = {
+    apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json"
+  };
+  if (schema) {
+    headers["Accept-Profile"] = schema;
+  }
+  try {
+    const r = await fetch(`${SUPA}/rest/v1/${tableName}?${params}`, { headers });
+    if (!r.ok) {
+      console.warn(`[Engine12] ${table}: HTTP ${r.status}`);
+      return [];
+    }
+    return r.json();
+  } catch (e) {
+    console.warn(`[Engine12] ${table}: fetch failed`, e);
+    return [];
+  }
 };
 
 // ── TOKENS ────────────────────────────────────────────────
@@ -145,7 +165,7 @@ export function PricePredictionPage() {
   }, []);
 
   if (loading) return (
-    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ background: C.bg, height: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ width: 44, height: 44, border: `3px solid ${C.accentDim}`, borderTop: `3px solid ${C.accent}`,
           borderRadius: "50%", animation: "spin 0.9s linear infinite", margin: "0 auto 14px" }} />
@@ -168,7 +188,7 @@ export function PricePredictionPage() {
   const confTier = s?.price_confidence === "high" ? "LIVE" : s?.price_confidence === "medium" ? "ESTIMATED" : "GAP";
 
   return (
-    <div style={{ background: C.bg, color: C.text, minHeight: "100vh", padding: 14,
+    <div style={{ background: C.bg, color: C.text, height: "calc(100vh - 56px)", overflow: "auto", padding: 14,
       fontFamily: "'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 
@@ -232,7 +252,7 @@ export function PricePredictionPage() {
                   AED {s ? Math.round(s.predicted_psf).toLocaleString() : "—"} PSF
                 </div>
                 <div style={{ marginTop: 8 }}>
-                  <Chip type={confTier} label={s?.price_confidence?.toUpperCase() + " CONFIDENCE"} />
+                  <Chip type={confTier} label={(s?.price_confidence?.toUpperCase() || confTier) + " CONFIDENCE"} />
                 </div>
               </div>
 

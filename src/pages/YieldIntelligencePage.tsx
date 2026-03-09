@@ -210,7 +210,7 @@ export function YieldIntelligencePage() {
   if (!bldg || !unit || !y) return <div style={{ color: "#555", padding: 40, textAlign: "center" }}>Loading data...</div>;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060608", color: "#e0e0e0", fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif", position: "relative" }}>
+    <div style={{ height: "calc(100vh - 56px)", overflow: "auto", background: "#060608", color: "#e0e0e0", fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif", position: "relative" }}>
 
       {/* ─── HEADER ─── */}
       <div style={{ padding: "12px 20px", borderBottom: "1px solid #141418", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
