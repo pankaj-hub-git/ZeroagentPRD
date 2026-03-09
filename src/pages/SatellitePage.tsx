@@ -39,6 +39,7 @@ interface Amenity {
 
 interface AmenityPolygon {
   id: string;
+  community_key: string;
   polygon_geojson: R;
   centroid_lnglat: [number, number];
   name: string;
@@ -405,11 +406,12 @@ export function SatellitePage() {
       const pins = (d.amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
       setAmenities(pins);
 
-      // Parse amenity polygons from RPC
-      const polys: AmenityPolygon[] = (d.amenity_polygons || [])
+      // Parse amenity polygons from RPC — accumulate across communities
+      const newPolys: AmenityPolygon[] = (d.amenity_polygons || [])
         .filter((ap: R) => ap.polygon_geojson)
         .map((ap: R, i: number) => ({
-          id: String(ap.id ?? `ap-${i}`),
+          id: `${rpcKey}-${ap.id ?? i}`,
+          community_key: rpcKey,
           polygon_geojson: typeof ap.polygon_geojson === 'string' ? JSON.parse(ap.polygon_geojson) : ap.polygon_geojson,
           centroid_lnglat: Array.isArray(ap.centroid_lnglat)
             ? [ap.centroid_lnglat[0], ap.centroid_lnglat[1]] as [number, number]
@@ -422,8 +424,8 @@ export function SatellitePage() {
           area_sqm: ap.area_sqm != null ? Number(ap.area_sqm) : null,
           land_use: ap.land_use || '',
         }));
-      setAmenityPolygons(polys);
-      console.log(`[Satellite] ${polys.length} amenity polygons`);
+      setAmenityPolygons(newPolys);
+      console.log(`[Satellite] ${newPolys.length} amenity polygons loaded`);
 
       // Signature amenities
       const sigs = (d.signature_amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
@@ -513,13 +515,14 @@ export function SatellitePage() {
   const overlayBg = isDark ? '#07080da8' : '#ffffffd0';
   const goldColor = '#C9A84C';
 
-  const fillLayer: FillLayer = {
+  // Community boundary — outline only (no fill), amenity polygons handle fills
+  const boundaryFillLayer: FillLayer = {
     id: 'boundary-fill', type: 'fill', source: 'community-boundary',
-    paint: { 'fill-color': accentBlue, 'fill-opacity': 0.12 },
+    paint: { 'fill-color': accentBlue, 'fill-opacity': 0.04 },
   };
-  const lineLayer: LineLayer = {
+  const boundaryLineLayer: LineLayer = {
     id: 'boundary-line', type: 'line', source: 'community-boundary',
-    paint: { 'line-color': accentBlue, 'line-width': 2.5, 'line-opacity': 0.85 },
+    paint: { 'line-color': accentBlue, 'line-width': 2.5, 'line-opacity': 0.85, 'line-dasharray': [2, 1] },
   };
 
   return (
@@ -724,8 +727,8 @@ export function SatellitePage() {
                   {/* Community boundary polygon */}
                   {boundaryGeoJSON && (
                     <Source id="community-boundary" type="geojson" data={boundaryGeoJSON}>
-                      <Layer {...fillLayer} />
-                      <Layer {...lineLayer} />
+                      <Layer {...boundaryFillLayer} />
+                      <Layer {...boundaryLineLayer} />
                     </Source>
                   )}
 
