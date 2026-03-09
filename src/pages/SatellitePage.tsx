@@ -33,6 +33,21 @@ interface Amenity {
   rating: number | null;
   lat: number;
   lng: number;
+  render_as: 'polygon' | 'point';
+  area_sqm: number | null;
+}
+
+interface AmenityPolygon {
+  id: string;
+  polygon_geojson: R;
+  centroid_lnglat: [number, number];
+  name: string;
+  type: string;
+  category: string;
+  is_signature: boolean;
+  tagline: string;
+  area_sqm: number | null;
+  land_use: string;
 }
 
 interface RpcLayerData {
@@ -40,6 +55,7 @@ interface RpcLayerData {
   centroid_lnglat: [number, number];
   bbox: [number, number, number, number];
   amenities: R[];
+  amenity_polygons: R[];
   signature_amenities: R[];
   boundary_source: string;
   area_sqkm: number;
@@ -89,6 +105,49 @@ function toRpcKey(key: string): string {
   return key.split(' ').map(w => romanMap[w] ?? w).join('_');
 }
 
+/** Fill color by amenity type — matches nature of each feature */
+function getAmenityFillColor(type: string): string {
+  const colors: Record<string, string> = {
+    // Water — blues
+    crystal_lagoon: '#0EA5E9', ornamental_lake: '#38BDF8', waterpark_lagoon: '#0284C7',
+    waterfront_lagoon: '#7DD3FC', waterfront_marina: '#0369A1', marina: '#0369A1',
+    canal_waterfront: '#60A5FA', creek_waterfront: '#93C5FD', waterfront: '#BAE6FD',
+    waterfront_park: '#7DD3FC', thematic_lake: '#38BDF8', ecology_water: '#A7F3D0',
+    golf_lake: '#6EE7B7', urban_water_feature: '#BAE6FD', lagoon_beach_park: '#2DD4BF',
+    beach_park: '#FCD34D', beach_club: '#FBBF24', waterpark_attraction: '#0EA5E9',
+    // Green — greens
+    community_park: '#4ADE80', mega_park: '#22C55E', urban_park: '#86EFAC',
+    village_park: '#BBF7D0', zen_park: '#6EE7B7', botanical_park: '#34D399',
+    canal_park: '#A7F3D0', campus_green: '#BBF7D0', forest_park: '#16A34A',
+    forest_reserve: '#15803D', wellness_park: '#86EFAC', sports_park: '#4ADE80',
+    polo_park: '#22C55E', motorsport_park: '#D1FAE5', theme_park_grounds: '#FDE68A',
+    themed_park: '#FEF3C7', island_park: '#6EE7B7',
+    // Golf — fairway green
+    golf_park: '#365314', golf_course: '#3F6212', golf_hotel: '#4D7C0F',
+    // Sports / leisure — orange
+    sports_leisure: '#FB923C', sports_village: '#F97316', leisure_facility: '#FDBA74',
+    motorsport_attraction: '#FCA5A5', signature_leisure: '#F59E0B', wellness_facility: '#C4B5FD',
+    // Entertainment — purple
+    entertainment_facility: '#A78BFA', theme_park: '#8B5CF6', cultural_facility: '#7C3AED',
+    // Facilities — warm grey
+    community_facility: '#D1D5DB', business_facility: '#E5E7EB',
+    medical_facility: '#FEE2E2', healthcare: '#FCA5A5',
+    // Hospitality — gold
+    hotel_cluster: '#FDE68A', boutique_hotel: '#FCD34D', resort_hotel: '#F59E0B', luxury_hotel: '#D97706',
+    // Retail — yellow
+    retail_village: '#FEF9C3', retail_mall: '#FEF08A', lifestyle_retail: '#FDE047',
+  };
+  return colors[type] || '#D1D5DB';
+}
+
+/** Format area for display */
+function formatArea(sqm: number | null): string | null {
+  if (!sqm) return null;
+  return sqm >= 10000
+    ? (sqm / 1_000_000).toFixed(2) + ' km\u00B2'
+    : Math.round(sqm).toLocaleString() + ' m\u00B2';
+}
+
 export function SatellitePage() {
   const { colors, mode, toggle } = useTheme();
   const isDark = mode === 'dark';
@@ -96,6 +155,7 @@ export function SatellitePage() {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState<Community | null>(null);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
+  const [amenityPolygons, setAmenityPolygons] = useState<AmenityPolygon[]>([]);
   const [signatureAmenities, setSignatureAmenities] = useState<Amenity[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Select a community');
@@ -139,6 +199,7 @@ export function SatellitePage() {
   const loadCommunity = async (com: Community) => {
     setSelected(com);
     setAmenities([]);
+    setAmenityPolygons([]);
     setSignatureAmenities([]);
     setBoundaryGeoJSON(null);
     setRpcMeta(null);
@@ -221,6 +282,8 @@ export function SatellitePage() {
           lifecycle_stage: a.lifecycle_stage || 'operational',
           source: a.source || '',
           rating: a.rating != null ? Number(a.rating) : null,
+          render_as: a.render_as === 'polygon' ? 'polygon' as const : 'point' as const,
+          area_sqm: a.area_sqm != null ? Number(a.area_sqm) : null,
           lat, lng,
         };
       };
@@ -228,7 +291,27 @@ export function SatellitePage() {
       const pins = (d.amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
       setAmenities(pins);
 
-      // CHANGE 4: Signature amenities
+      // Parse amenity polygons from RPC
+      const polys: AmenityPolygon[] = (d.amenity_polygons || [])
+        .filter((ap: R) => ap.polygon_geojson)
+        .map((ap: R, i: number) => ({
+          id: String(ap.id ?? `ap-${i}`),
+          polygon_geojson: typeof ap.polygon_geojson === 'string' ? JSON.parse(ap.polygon_geojson) : ap.polygon_geojson,
+          centroid_lnglat: Array.isArray(ap.centroid_lnglat)
+            ? [ap.centroid_lnglat[0], ap.centroid_lnglat[1]] as [number, number]
+            : [0, 0] as [number, number],
+          name: ap.name || 'Unknown',
+          type: String(ap.type || '').toLowerCase(),
+          category: String(ap.category || '').toLowerCase(),
+          is_signature: Boolean(ap.is_signature),
+          tagline: ap.tagline || '',
+          area_sqm: ap.area_sqm != null ? Number(ap.area_sqm) : null,
+          land_use: ap.land_use || '',
+        }));
+      setAmenityPolygons(polys);
+      console.log(`[Satellite] ${polys.length} amenity polygons`);
+
+      // Signature amenities
       const sigs = (d.signature_amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
       setSignatureAmenities(sigs);
 
@@ -499,8 +582,53 @@ export function SatellitePage() {
                     </Source>
                   )}
 
-                  {/* CHANGE 3: Amenity markers with signature/planned styles */}
-                  {visible.map(a => {
+                  {/* Amenity polygon fills */}
+                  {amenityPolygons.map(ap => {
+                    const fillColor = getAmenityFillColor(ap.type);
+                    const srcId = `amenity-poly-${ap.id}`;
+                    return (
+                      <Source key={srcId} id={srcId} type="geojson" data={{
+                        type: 'Feature' as const, geometry: ap.polygon_geojson,
+                        properties: { name: ap.name, type: ap.type, is_signature: ap.is_signature },
+                      }}>
+                        <Layer id={`${srcId}-fill`} type="fill" paint={{
+                          'fill-color': fillColor,
+                          'fill-opacity': ap.is_signature ? 0.25 : 0.15,
+                        }} />
+                        <Layer id={`${srcId}-outline`} type="line" paint={{
+                          'line-color': fillColor,
+                          'line-width': ap.is_signature ? 1.5 : 0.8,
+                          'line-opacity': ap.is_signature ? 0.7 : 0.4,
+                        }} />
+                      </Source>
+                    );
+                  })}
+
+                  {/* Clickable centroid markers for polygon amenities */}
+                  {amenityPolygons.map(ap => (
+                    <Marker key={`centroid-${ap.id}`} longitude={ap.centroid_lnglat[0]} latitude={ap.centroid_lnglat[1]} anchor="center"
+                      onClick={e => {
+                        e.originalEvent.stopPropagation();
+                        setPopupAmenity({
+                          id: Number(ap.id) || 0, name: ap.name,
+                          amenity_type: ap.type, amenity_category: ap.category,
+                          is_operational: true, is_signature: ap.is_signature,
+                          tagline: ap.tagline, lifecycle_stage: 'operational',
+                          source: '', rating: null, render_as: 'polygon',
+                          area_sqm: ap.area_sqm,
+                          lat: ap.centroid_lnglat[1], lng: ap.centroid_lnglat[0],
+                        });
+                      }}>
+                      <div style={{
+                        width: 5, height: 5, borderRadius: '50%',
+                        background: getAmenityFillColor(ap.type),
+                        border: '1px solid rgba(0,0,0,0.2)', opacity: 0.6, cursor: 'pointer',
+                      }} />
+                    </Marker>
+                  ))}
+
+                  {/* Point-only amenity markers (skip polygon-rendered ones) */}
+                  {visible.filter(a => a.render_as !== 'polygon').map(a => {
                     const cat = a.amenity_type || a.amenity_category || 'default';
                     const color = CAT_COLORS[cat] || CAT_COLORS.default;
                     const isPlanned = a.lifecycle_stage === 'planned';
@@ -558,6 +686,7 @@ export function SatellitePage() {
                         </div>
                         <div style={{ fontSize: 7, color: textDim, marginTop: 4 }}>
                           {popupAmenity.lat.toFixed(5)}°N, {popupAmenity.lng.toFixed(5)}°E
+                          {popupAmenity.area_sqm ? ` · ${formatArea(popupAmenity.area_sqm)}` : ''}
                         </div>
                       </div>
                     </Popup>
