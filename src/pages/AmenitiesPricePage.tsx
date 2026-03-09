@@ -512,7 +512,7 @@ export function AmenitiesPricePage() {
   const isDHE = community === "Dubai Hills Estate";
 
   return (
-    <div style={{ minHeight: "100vh", background: colors.bg, color: colors.text, fontFamily: sans, padding: "20px 16px 48px" }}>
+    <div style={{ height: "100%", overflowY: "auto", background: colors.bg, color: colors.text, fontFamily: sans, padding: "20px 16px 48px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap');
         @keyframes amenity-spin{to{transform:rotate(360deg)}}
