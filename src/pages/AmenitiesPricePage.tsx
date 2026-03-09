@@ -314,10 +314,11 @@ export function AmenitiesPricePage() {
         const lbl = ev.label_short || ev.amenity_name.slice(0, 14);
         const icon = ev.icon || CAT_ICON[ev.amenity_category] || "📍";
 
-        ann["vl" + i] = { type: "line", xMin: qIdx, xMax: qIdx, borderColor: c.border, borderWidth: 1, borderDash: [5, 5] };
-        ann["pt" + i] = { type: "point", xValue: qIdx, yValue: commVal, radius: 5, backgroundColor: c.gold, borderColor: c.text, borderWidth: 1.5 };
+        const xLabel = labels[qIdx];
+        ann["vl" + i] = { type: "line", xMin: xLabel, xMax: xLabel, borderColor: c.border, borderWidth: 1, borderDash: [5, 5] };
+        ann["pt" + i] = { type: "point", xValue: xLabel, yValue: commVal, radius: 5, backgroundColor: c.gold, borderColor: c.text, borderWidth: 1.5 };
         ann["lb" + i] = {
-          type: "label", xValue: qIdx, yValue: annYRows[i % 2],
+          type: "label", xValue: xLabel, yValue: annYRows[i % 2],
           content: [icon + " " + lbl], color: c.text,
           font: { size: 10, weight: "600" as const },
           backgroundColor: c.bg + "EE", padding: { top: 4, bottom: 4, left: 6, right: 6 },
