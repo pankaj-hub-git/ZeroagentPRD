@@ -10,6 +10,7 @@ import { FlipMomentumPage } from '@/pages/FlipMomentumPage';
 import { YieldIntelligencePage } from '@/pages/YieldIntelligencePage';
 import { PricePredictionPage } from '@/pages/PricePredictionPage';
 import { PhaseIntelligencePage } from '@/pages/PhaseIntelligencePage';
+import { AmenitiesPricePage } from '@/pages/AmenitiesPricePage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -25,6 +26,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/yield-intelligence" element={<YieldIntelligencePage />} />
           <Route path="/price-prediction" element={<PricePredictionPage />} />
           <Route path="/phase-intelligence" element={<PhaseIntelligencePage />} />
+          <Route path="/amenities-price" element={<AmenitiesPricePage />} />
           <Route path="*" element={<HomePage />} />
         </Route>
       </Routes>
