@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Building2, Satellite, Activity, TrendingUp, Target } from 'lucide-react';
+import { Home, Building2, Satellite, Activity, TrendingUp, Target, Layers } from 'lucide-react';
 
 const links = [
   { to: '/', label: 'Home', icon: Home },
@@ -8,6 +8,7 @@ const links = [
   { to: '/flip-momentum', label: 'Flip Momentum', icon: Activity },
   { to: '/yield-intelligence', label: 'Yield Intel', icon: TrendingUp },
   { to: '/price-prediction', label: 'Price Prediction', icon: Target },
+  { to: '/phase-intelligence', label: 'Phase Intel', icon: Layers },
 ];
 
 export function TopNav() {
