@@ -64,22 +64,53 @@ interface RpcLayerData {
 
 /* ── Label maps ── */
 const AMENITY_LABELS: Record<string, string> = {
+  // OSM types that appear in filter
+  hospital: 'Clinic / Hospital', mall: 'Supermarket / Mall',
+  sports_club: 'Gym / Sports Club', other: 'Other', recreation: 'Recreation',
+  // Masterplan types
+  crystal_lagoon: 'Crystal Lagoon', ornamental_lake: 'Lagoon / Lake',
+  waterpark_lagoon: 'Wave Pool', community_park: 'Community Park',
+  forest_park: 'Forest Park', golf_park: 'Golf Course', golf_course: 'Golf Course',
+  community_facility: 'Schools & Mosque', retail_village: 'Retail Village',
+  leisure_facility: 'Leisure', hotel_cluster: 'Hotel Zone',
+  // Common types
   park: 'Park / Garden', restaurant: 'Restaurant', retail: 'Retail / Mall',
   school: 'School', mosque: 'Mosque', gym: 'Gym / Fitness', clinic: 'Clinic',
-  supermarket: 'Supermarket', hospital: 'Hospital', transport: 'Transport',
-  leisure: 'Leisure', entertainment: 'Entertainment', recreation: 'Recreation',
+  supermarket: 'Supermarket', transport: 'Transport',
+  leisure: 'Leisure', entertainment: 'Entertainment',
   promenade: 'Promenade / Walk', lagoon: 'Lagoon / Water', pool: 'Pool',
   playground: 'Playground', nursery: 'Nursery', pharmacy: 'Pharmacy',
   community_centre: 'Community Centre', dog_park: 'Dog Park',
   sports_court: 'Sports Court', cycling_track: 'Cycling Track',
+  mega_park: 'Mega Park', urban_park: 'Urban Park', village_park: 'Village Park',
+  zen_park: 'Zen Park', botanical_park: 'Botanical Park', canal_park: 'Canal Park',
+  wellness_park: 'Wellness Park', sports_park: 'Sports Park',
+  beach_park: 'Beach Park', beach_club: 'Beach Club',
+  retail_mall: 'Retail Mall', lifestyle_retail: 'Lifestyle Retail',
+  entertainment_facility: 'Entertainment', theme_park: 'Theme Park',
+  sports_leisure: 'Sports / Leisure', sports_village: 'Sports Village',
+  boutique_hotel: 'Boutique Hotel', resort_hotel: 'Resort Hotel', luxury_hotel: 'Luxury Hotel',
+  medical_facility: 'Medical Facility', healthcare: 'Healthcare',
+  business_facility: 'Business Facility',
 };
 
+/** Get human-readable label for amenity type, with underscore→space fallback */
+function getAmenityLabel(type: string): string {
+  return AMENITY_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
 const SOURCE_LABELS: Record<string, string> = {
+  openstreetmap: 'OpenStreetMap',
+  masterplan_catalogue: 'Masterplan Catalogue',
+  brochure_verified: 'Brochure Verified',
+  dda: 'DDA Cadastral',
+  khda: 'KHDA',
   osm: 'OpenStreetMap',
   google_places: 'Google Places',
   dld_masterplan: 'DLD Masterplan',
   gee_verified: 'GEE Satellite-verified',
   manual: 'Manual Survey',
+  dda_plots_union: 'DDA Plots Union',
 };
 
 const SIG_EMOJI: Record<string, string> = {
@@ -165,6 +196,7 @@ export function SatellitePage() {
   const [popupAmenity, setPopupAmenity] = useState<Amenity | null>(null);
   const [boundaryGeoJSON, setBoundaryGeoJSON] = useState<GeoJSONFC | null>(null);
   const [rpcMeta, setRpcMeta] = useState<{ boundary_source: string; area_sqkm: number } | null>(null);
+  const [mapZoom, setMapZoom] = useState(14);
   const mapboxRef = useRef<MapRef>(null);
 
   /* ── CHANGE 5: Load overview community list from get_all_community_centroids RPC ── */
@@ -358,6 +390,21 @@ export function SatellitePage() {
     [amenities, categories]
   );
 
+  // Merged polygon FeatureCollection for low-zoom rendering
+  const mergedPolygonFC = useMemo<GeoJSONFC | null>(() => {
+    if (!amenityPolygons.length) return null;
+    return {
+      type: 'FeatureCollection',
+      features: amenityPolygons.map(ap => ({
+        type: 'Feature',
+        geometry: ap.polygon_geojson,
+        properties: { type: ap.type, is_signature: ap.is_signature, name: ap.name },
+      })),
+    };
+  }, [amenityPolygons]);
+
+  const useIndividualPolygons = mapZoom >= 13;
+
   // Fly mapbox to community bounds when selected
   const flyToSelected = useCallback(() => {
     if (!selected || !mapboxRef.current) return;
@@ -412,6 +459,10 @@ export function SatellitePage() {
         .sig-strip::-webkit-scrollbar{display:none}
         .sig-card{flex-shrink:0;width:140px;background:${isDark ? '#0a1628' : '#f8f9fb'};border:1px solid ${isDark ? '#1a2a3e' : '#e0e4ea'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:border-color .2s}
         .sig-card:hover{border-color:${goldColor}}
+        .amenity-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;text-align:center;gap:8px}
+        .amenity-empty__icon{font-size:28px;opacity:0.4}
+        .amenity-empty__text{font-size:13px;font-weight:600;color:${isDark ? '#8a9bb5' : '#4a5568'}}
+        .amenity-empty__sub{font-size:11px;color:${isDark ? '#4a6a8a' : '#8899aa'};max-width:220px;line-height:1.5}
       `}</style>
 
       {/* Header */}
@@ -495,8 +546,8 @@ export function SatellitePage() {
             </div>
           ) : (
             <>
-              {/* CHANGE 7: Filter bar with AMENITY_LABELS */}
-              <div style={{ padding: '6px 12px', borderBottom: `1px solid ${rowBorder}`, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', background: panelBg, flexShrink: 0 }}>
+              {/* Filter bar — only show when amenities exist */}
+              {amenities.length > 0 && <div style={{ padding: '6px 12px', borderBottom: `1px solid ${rowBorder}`, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', background: panelBg, flexShrink: 0 }}>
                 <span style={{ fontSize: 8, color: textDim, letterSpacing: 1, flexShrink: 0 }}>STATUS:</span>
                 {([['all', 'ALL'], ['op', '● OPEN'], ['not', '○ PENDING']] as [string, string][]).map(([v, l]) => (
                   <button key={v} className={`sat-chip${filterOp === v ? ' on' : ''}`}
@@ -512,14 +563,27 @@ export function SatellitePage() {
                     <button key={cat} className={`sat-chip${filterCat === cat ? ' on' : ''}`}
                       style={filterCat === cat ? { borderColor: c, color: c, background: `${c}12` } : {}}
                       onClick={() => setFilterCat(filterCat === cat ? 'all' : cat)}>
-                      {AMENITY_LABELS[cat] || cat} {catCounts[cat] || ''}
+                      {getAmenityLabel(cat)} {catCounts[cat] || ''}
                     </button>
                   );
                 })}
                 <span style={{ marginLeft: 'auto', fontSize: 9, color: textDim, flexShrink: 0 }}>{visible.length} pins</span>
-              </div>
+              </div>}
 
-              {/* CHANGE 4: Signature amenities horizontal strip */}
+              {/* Empty amenities placeholder */}
+              {!loading && amenities.length === 0 && amenityPolygons.length === 0 && (
+                <div className="amenity-empty">
+                  <div className="amenity-empty__icon">🏗</div>
+                  <div className="amenity-empty__text">No amenities mapped yet</div>
+                  <div className="amenity-empty__sub">
+                    {rpcMeta?.boundary_source === 'dda_plots_union'
+                      ? 'Masterplan amenities will be added as the community develops'
+                      : 'Amenity data not yet available for this community'}
+                  </div>
+                </div>
+              )}
+
+              {/* Signature amenities horizontal strip */}
               {signatureAmenities.length > 0 && (
                 <div style={{ borderBottom: `1px solid ${rowBorder}`, background: panelBg, flexShrink: 0 }}>
                   <div style={{ padding: '4px 12px 0', fontSize: 8, color: goldColor, letterSpacing: 1 }}>★ SIGNATURE AMENITIES</div>
@@ -538,7 +602,7 @@ export function SatellitePage() {
                           {sig.tagline && <div style={{ fontSize: 7.5, color: textSecondary, lineHeight: 1.3, marginBottom: 3 }}>{sig.tagline}</div>}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 7 }}>
                             <span style={{ color: CAT_COLORS[sig.amenity_type] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              {AMENITY_LABELS[sig.amenity_type] || sig.amenity_type}
+                              {getAmenityLabel(sig.amenity_type)}
                             </span>
                             {sig.rating != null && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: 2, color: goldColor }}>
@@ -573,6 +637,7 @@ export function SatellitePage() {
                   }}
                   style={{ width: '100%', height: '100%' }}
                   onLoad={flyToSelected}
+                  onZoom={e => setMapZoom(e.viewState.zoom)}
                 >
                   {/* Community boundary polygon */}
                   {boundaryGeoJSON && (
@@ -582,8 +647,20 @@ export function SatellitePage() {
                     </Source>
                   )}
 
-                  {/* Amenity polygon fills */}
-                  {amenityPolygons.map(ap => {
+                  {/* Amenity polygons — merged at low zoom, individual at high zoom */}
+                  {!useIndividualPolygons && mergedPolygonFC && (
+                    <Source id="amenity-polygons-merged" type="geojson" data={mergedPolygonFC}>
+                      <Layer id="amenity-polygons-merged-fill" type="fill" paint={{
+                        'fill-color': ['case', ['==', ['get', 'is_signature'], true], '#C8A84B', '#4ADE80'],
+                        'fill-opacity': 0.12,
+                      }} />
+                      <Layer id="amenity-polygons-merged-line" type="line" paint={{
+                        'line-color': '#2d8aff', 'line-width': 0.8, 'line-opacity': 0.4,
+                      }} />
+                    </Source>
+                  )}
+
+                  {useIndividualPolygons && amenityPolygons.map(ap => {
                     const fillColor = getAmenityFillColor(ap.type);
                     const srcId = `amenity-poly-${ap.id}`;
                     return (
@@ -604,8 +681,8 @@ export function SatellitePage() {
                     );
                   })}
 
-                  {/* Clickable centroid markers for polygon amenities */}
-                  {amenityPolygons.map(ap => (
+                  {/* Clickable centroid markers for polygon amenities (only at high zoom) */}
+                  {useIndividualPolygons && amenityPolygons.map(ap => (
                     <Marker key={`centroid-${ap.id}`} longitude={ap.centroid_lnglat[0]} latitude={ap.centroid_lnglat[1]} anchor="center"
                       onClick={e => {
                         e.originalEvent.stopPropagation();
@@ -663,7 +740,7 @@ export function SatellitePage() {
                         {popupAmenity.tagline && <div style={{ fontSize: 8.5, color: textSecondary, marginBottom: 5, lineHeight: 1.4 }}>{popupAmenity.tagline}</div>}
                         <div style={{ display: 'flex', gap: 8, fontSize: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                           <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            {AMENITY_LABELS[popupAmenity.amenity_type] || popupAmenity.amenity_type || popupAmenity.amenity_category}
+                            {getAmenityLabel(popupAmenity.amenity_type || popupAmenity.amenity_category)}
                           </span>
                           <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
                             {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
@@ -731,7 +808,7 @@ export function SatellitePage() {
                         <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, cursor: 'pointer' }}
                           onClick={() => setFilterCat(filterCat === cat ? 'all' : cat)}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: c, boxShadow: `0 0 4px ${c}80`, flexShrink: 0 }} />
-                          <span style={{ fontSize: 7.5, color: filterCat === cat ? c : textSecondary, transition: 'color .15s' }}>{AMENITY_LABELS[cat] || cat}</span>
+                          <span style={{ fontSize: 7.5, color: filterCat === cat ? c : textSecondary, transition: 'color .15s' }}>{getAmenityLabel(cat)}</span>
                           <span style={{ fontSize: 7.5, color: textDim, marginLeft: 'auto' }}>{catCounts[cat] || 0}</span>
                         </div>
                       );
