@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Building2, Satellite } from 'lucide-react';
+import { Home, Building2, Satellite, Activity } from 'lucide-react';
 
 const links = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/projects', label: 'Projects', icon: Building2 },
   { to: '/satellite', label: 'Satellite', icon: Satellite },
+  { to: '/flip-momentum', label: 'Flip Momentum', icon: Activity },
 ];
 
 export function TopNav() {
