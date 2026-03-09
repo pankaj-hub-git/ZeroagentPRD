@@ -11,6 +11,8 @@ import { useTheme } from "@/lib/theme";
 //   gold.v_ejari_community_summary  → bedroom-level Ejari aggregation
 //   gold.v_mollak_community_summary → RERA service charges from Mollak
 //   gold.engine12_community_readiness → community availability gate
+//   gold.v_dld_project_psf_live    → project-level DLD PSF + tier
+//   gold.v_dld_community_psf_live  → community-level DLD PSF (tier-filtered)
 //   xray_dld_recent, xray_developer_scores, xray_psm_benchmarks,
 //   xray_government_alignment, community_maturity_scores,
 //   bronze_government_catalysts, v_cfi_by_community, v_amenity_fraud_scores
@@ -175,22 +177,22 @@ export function PricePredictionPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [scorecard, dldComps, rentalProfile, ejariDetail, mollak, readiness, devScore, psm, maturity, catalysts, govAlign, cfi, fraud] =
+        const [scorecard, dldComps, rentalProfile, ejariDetail, mollak, readiness, devScore, psm, maturity, catalysts, govAlign, cfi, fraud, projectPsf] =
           await Promise.all([
             sq("gold.property_scorecard",
               "select=*&project_name=eq.Arabian+Ranches+III+-+Raya&order=as_of_date.desc&limit=1"),
             sq("xray_dld_recent",
               "select=project_name_en,rooms_en,sqft,price_aed,price_per_sqft,instance_date&project_name_en=ilike.*arabian+ranches*&rooms_en=eq.3+B%2FR&order=instance_date.desc&limit=30"),
-            // NEW: gold.v_community_rental_profile — Ejari + Mollak joined
+            // gold.v_community_rental_profile — Ejari + Mollak joined
             sq("gold.v_community_rental_profile",
               "select=*&master_community=eq.Arabian+Ranches+III&limit=1"),
-            // NEW: gold.v_ejari_community_summary — bedroom-level Ejari
+            // gold.v_ejari_community_summary — bedroom-level Ejari
             sq("gold.v_ejari_community_summary",
               "select=*&master_community=eq.Arabian+Ranches+III"),
-            // NEW: gold.v_mollak_community_summary — Mollak SC
+            // gold.v_mollak_community_summary — Mollak SC
             sq("gold.v_mollak_community_summary",
               "select=*&master_community=eq.Arabian+Ranches+III&limit=1"),
-            // NEW: gold.engine12_community_readiness — readiness gate
+            // gold.engine12_community_readiness — readiness gate
             sq("gold.engine12_community_readiness",
               "select=*&master_community=eq.Arabian+Ranches+III&limit=1"),
             sq("xray_developer_scores",
@@ -207,7 +209,21 @@ export function PricePredictionPage() {
               "select=community,cfi_score,cfi_tier,nationality_count,weighted_yoy_growth&community=eq.Arabian+Ranches+III"),
             sq("v_amenity_fraud_scores",
               "select=master_community,amenity_fraud_score,delivery_rate_pct,total_promised,fully_delivered&master_community=ilike.*arabian+ranches*&limit=3"),
+            // v_dld_project_psf_live — get subject project's psf_tier
+            sq("gold.v_dld_project_psf_live",
+              "select=*&project_name_en=ilike.*raya*&master_community=eq.Arabian+Ranches+III&limit=1"),
           ]);
+
+        // Tier-aware community PSF: look up project tier, then filter community comps
+        const projTier = projectPsf?.[0]?.psf_tier || null;
+        const needsSeg = projectPsf?.[0]?.community_needs_segmentation === true;
+
+        // Build community PSF query — filter by tier if community needs segmentation
+        let communityPsfParams = "select=*&master_community=eq.Arabian+Ranches+III";
+        if (needsSeg && projTier) {
+          communityPsfParams += `&psf_tier=eq.${encodeURIComponent(projTier)}`;
+        }
+        const communityPsf = await sq("gold.v_dld_community_psf_live", communityPsfParams);
 
         setD({
           scorecard: scorecard?.[0], dldComps,
@@ -217,7 +233,11 @@ export function PricePredictionPage() {
           readiness: readiness?.[0],
           devScore: devScore?.[0], psm,
           maturity: maturity?.[0], catalysts, govAlign: govAlign?.[0],
-          cfi: cfi?.[0], fraud
+          cfi: cfi?.[0], fraud,
+          projectPsf: projectPsf?.[0],
+          communityPsf: communityPsf?.[0],
+          psfTier: projTier,
+          psfSegmented: needsSeg,
         });
       } catch (e: unknown) {
         console.error("Fetch error:", e);
@@ -250,6 +270,10 @@ export function PricePredictionPage() {
   const ejd: R[] = D?.ejariDetail || [];          // v_ejari_community_summary
   const mollak: R | null = D?.mollak || null;     // v_mollak_community_summary
   const readiness: R | null = D?.readiness || null;
+  const projPsf: R | null = D?.projectPsf || null;    // v_dld_project_psf_live
+  const commPsf: R | null = D?.communityPsf || null;  // v_dld_community_psf_live (tier-filtered)
+  const psfTier: string | null = D?.psfTier || null;
+  const psfSegmented: boolean = D?.psfSegmented || false;
   const BUA = 1877;
 
   // Live Ejari median rent for 3BR (Step 8)
@@ -498,6 +522,70 @@ export function PricePredictionPage() {
                   <span style={{ color: src.tier === "LIVE" ? C.accent : C.amber, fontSize: 13 }}>●</span>
                 </div>
               ))}
+            </div>
+
+            {/* DLD Live PSF — project + community (tier-aware) */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <div style={{ fontSize: 9, color: C.muted, letterSpacing: 1, textTransform: "uppercase",
+                  fontFamily: "monospace" }}>DLD LIVE PSF</div>
+                <Chip type="LIVE" label="v_dld_project_psf_live" />
+                {psfSegmented && psfTier && (
+                  <span style={{ fontSize: 9, fontFamily: "monospace", color: C.amber, background: C.amberDim,
+                    padding: "1px 6px", borderRadius: 10 }}>Tier: {psfTier}</span>
+                )}
+              </div>
+
+              {/* Project-level PSF */}
+              {projPsf && (
+                <div style={{ padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px", gap: 6 }}>
+                    <span style={{ color: C.text, fontWeight: 500 }}>
+                      Project: {projPsf.project_name_en || "Raya"}
+                    </span>
+                    <span style={{ color: C.accent, fontFamily: "monospace", fontWeight: 700 }}>
+                      {Number(projPsf.median_psf || projPsf.avg_psf || 0).toLocaleString()} PSF
+                    </span>
+                    <span style={{ color: C.blue, fontFamily: "monospace" }}>
+                      {projPsf.txn_count ? `${projPsf.txn_count} txns` : "—"}
+                    </span>
+                  </div>
+                  {projPsf.psf_tier && (
+                    <div style={{ fontSize: 9, color: C.muted, marginTop: 2, fontFamily: "monospace" }}>
+                      PSF tier: {projPsf.psf_tier}
+                      {projPsf.min_psf && projPsf.max_psf && ` · Range: ${Number(projPsf.min_psf).toLocaleString()}–${Number(projPsf.max_psf).toLocaleString()}`}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Community-level PSF (tier-filtered if segmented) */}
+              {commPsf && (
+                <div style={{ padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 11 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 60px", gap: 6 }}>
+                    <span style={{ color: C.dim }}>
+                      Community{psfSegmented ? ` (${psfTier} tier)` : ""}
+                    </span>
+                    <span style={{ color: C.accent, fontFamily: "monospace", fontWeight: 700 }}>
+                      {Number(commPsf.median_psf || commPsf.avg_psf || 0).toLocaleString()} PSF
+                    </span>
+                    <span style={{ color: C.blue, fontFamily: "monospace" }}>
+                      {commPsf.txn_count ? `${commPsf.txn_count} txns` : "—"}
+                    </span>
+                  </div>
+                  {commPsf.yoy_change_pct != null && (
+                    <div style={{ fontSize: 9, color: C.muted, marginTop: 2, fontFamily: "monospace" }}>
+                      YoY: {fmtPct(commPsf.yoy_change_pct)}
+                      {commPsf.min_psf && commPsf.max_psf && ` · Range: ${Number(commPsf.min_psf).toLocaleString()}–${Number(commPsf.max_psf).toLocaleString()}`}
+                    </div>
+                  )}
+                  {psfSegmented && (
+                    <div style={{ fontSize: 9, color: C.amber, marginTop: 3, fontFamily: "monospace", fontStyle: "italic" }}>
+                      Segmented community — filtered to {psfTier} tier only
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* PSM benchmarks */}
