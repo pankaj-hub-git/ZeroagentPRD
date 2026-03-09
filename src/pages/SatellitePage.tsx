@@ -23,6 +23,7 @@ interface Community {
 interface Amenity {
   id: number;
   name: string;
+  brochure_name: string;
   amenity_type: string;
   amenity_category: string;
   is_operational: boolean;
@@ -43,6 +44,7 @@ interface AmenityPolygon {
   polygon_geojson: R;
   centroid_lnglat: [number, number];
   name: string;
+  brochure_name: string;
   type: string;
   category: string;
   is_signature: boolean;
@@ -150,6 +152,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 /** Get human-readable label for amenity type, with underscore→space fallback */
 function getAmenityLabel(type: string): string {
   return AMENITY_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
+/** Display name priority: brochure_name > name > type label fallback */
+function getDisplayName(a: { brochure_name?: string; name?: string; amenity_type?: string; type?: string }): string {
+  return a.brochure_name || a.name || getAmenityLabel(a.amenity_type || a.type || '');
 }
 
 /** Get human-readable label for amenity category */
@@ -389,6 +396,7 @@ export function SatellitePage() {
         return {
           id: a.id ?? i,
           name: a.name || a.amenity_name || 'Unknown',
+          brochure_name: a.brochure_name || '',
           amenity_type: String(a.amenity_type || a.type || '').toLowerCase(),
           amenity_category: String(a.amenity_category || a.category || '').toLowerCase(),
           is_operational: a.is_operational != null ? Boolean(a.is_operational) : true,
@@ -402,6 +410,10 @@ export function SatellitePage() {
           lat, lng,
         };
       };
+
+      // Debug: log raw RPC sample to inspect available fields
+      if ((d.amenities || []).length > 0) console.log('[Satellite] RAW AMENITY SAMPLE:', JSON.stringify((d.amenities)[0], null, 2));
+      if ((d.amenity_polygons || []).length > 0) console.log('[Satellite] RAW POLYGON SAMPLE:', JSON.stringify((d.amenity_polygons)[0], null, 2));
 
       const pins = (d.amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
       setAmenities(pins);
@@ -417,6 +429,7 @@ export function SatellitePage() {
             ? [ap.centroid_lnglat[0], ap.centroid_lnglat[1]] as [number, number]
             : [0, 0] as [number, number],
           name: ap.name || 'Unknown',
+          brochure_name: ap.brochure_name || '',
           type: String(ap.type || '').toLowerCase(),
           category: String(ap.category || '').toLowerCase(),
           is_signature: Boolean(ap.is_signature),
@@ -682,7 +695,7 @@ export function SatellitePage() {
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                             <span style={{ fontSize: 14 }}>{emoji}</span>
-                            <span style={{ fontSize: 9, fontWeight: 600, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name}</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getDisplayName(sig)}</span>
                           </div>
                           {sig.tagline && <div style={{ fontSize: 7.5, color: textSecondary, lineHeight: 1.3, marginBottom: 3 }}>{sig.tagline}</div>}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 7 }}>
@@ -772,7 +785,7 @@ export function SatellitePage() {
                       onClick={e => {
                         e.originalEvent.stopPropagation();
                         setPopupAmenity({
-                          id: Number(ap.id) || 0, name: ap.name,
+                          id: Number(ap.id) || 0, name: ap.name, brochure_name: ap.brochure_name,
                           amenity_type: ap.type, amenity_category: ap.category,
                           is_operational: true, is_signature: ap.is_signature,
                           tagline: ap.tagline, lifecycle_stage: 'operational',
@@ -819,7 +832,7 @@ export function SatellitePage() {
                       onClose={() => setPopupAmenity(null)} closeButton={false}>
                       <div style={{ minWidth: 180 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: textPrimary }}>{popupAmenity.name}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: textPrimary }}>{getDisplayName(popupAmenity)}</div>
                           {popupAmenity.is_signature && <span style={{ fontSize: 7, background: `${goldColor}20`, color: goldColor, padding: '1px 5px', borderRadius: 2, letterSpacing: 0.5 }}>★ SIGNATURE</span>}
                         </div>
                         {popupAmenity.tagline && <div style={{ fontSize: 8.5, color: textSecondary, marginBottom: 5, lineHeight: 1.4 }}>{popupAmenity.tagline}</div>}
