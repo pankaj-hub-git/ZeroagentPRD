@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/lib/theme';
-import { sb } from '@/lib/supabase';
+import { sb, gold } from '@/lib/supabase';
 import { Loader2, Search, Sun, Moon } from 'lucide-react';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -217,17 +217,22 @@ export function ProjectsPage() {
         setAmenities(a.data || []);
         setInfra(i.data || []);
         if (sel.rera_registration_no) {
-          const [dr, ds, ej] = await Promise.all([
+          const [dr, ds] = await Promise.all([
             sb.from('xray_dld_recent').select('*').eq('project_number', sel.rera_registration_no).order('instance_date', { ascending: false }).limit(15),
             sb.from('xray_dld_summary').select('*').eq('project_number', sel.rera_registration_no),
-            sb.from('xray_ejari_summary').select('*').eq('project_number', sel.rera_registration_no),
           ]);
           if (dr.error) console.error('[Projects] xray_dld_recent:', dr.error.message);
           if (ds.error) console.error('[Projects] xray_dld_summary:', ds.error.message);
-          if (ej.error) console.error('[Projects] xray_ejari_summary:', ej.error.message);
           setDldRecent(dr.data || []);
           setDldSummary(ds.data || []);
-          setEjari(ej.data || []);
+          // Ejari from gold.v_ejari_community_summary (community-level, replaces xray_ejari_summary)
+          if (sel.master_community) {
+            const ej = await gold().from('v_ejari_community_summary').select('*').eq('master_community', sel.master_community);
+            if (ej.error) console.error('[Projects] gold.v_ejari_community_summary:', ej.error.message);
+            setEjari(ej.data || []);
+          } else {
+            setEjari([]);
+          }
         } else {
           setDldRecent([]); setDldSummary([]); setEjari([]);
         }
@@ -759,30 +764,35 @@ export function ProjectsPage() {
                   {/* EJARI RENTALS */}
                   {tab === 'rentals' && (
                     <div>
-                      <Section title="Ejari Rental Market" subtitle="From Ejari registered contracts (2024+)" accent colors={colors}>
+                      <Section title="Ejari Rental Market" subtitle="gold.v_ejari_community_summary · Ejari median · 24mo" accent colors={colors}>
                         {ejari.length === 0 ? (
-                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No Ejari rental data linked (project_number: {sel.rera_registration_no || 'not mapped'})</div></PCard>
+                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No Ejari rental data for {sel.master_community || 'this community'}</div></PCard>
                         ) : ejari.map((r, i) => (
                           <PCard key={i} colors={colors} style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                               <div>
-                                <span style={{ fontSize: 14, color: colors.text }}>{r.unit_type}</span>
+                                <span style={{ fontSize: 14, color: colors.text }}>{r.bedrooms}</span>
                                 <span style={{ fontSize: 11, color: colors.textDim, marginLeft: 8 }}>{r.contract_count} contracts</span>
+                                {r.new_contracts && <span style={{ fontSize: 10, color: colors.green, marginLeft: 8 }}>{r.new_contracts} new</span>}
                               </div>
                               <Badge color={colors.green} label="EJARI VERIFIED" />
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">MIN RENT</div>
-                                <div style={{ fontSize: 14, color: colors.red, marginTop: 2 }}>AED {fmt(r.min_rent)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.red, marginTop: 2 }}>AED {fmt(r.min_rent_aed)}/yr</div>
+                              </div>
+                              <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                <div className="za-data-label">MEDIAN RENT</div>
+                                <div style={{ fontSize: 14, color: colors.gold, marginTop: 2 }}>AED {fmt(r.median_rent_aed)}/yr</div>
                               </div>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">AVG RENT</div>
-                                <div style={{ fontSize: 14, color: colors.gold, marginTop: 2 }}>AED {fmt(r.avg_rent)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>AED {fmt(r.avg_rent_aed)}/yr</div>
                               </div>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">MAX RENT</div>
-                                <div style={{ fontSize: 14, color: colors.green, marginTop: 2 }}>AED {fmt(r.max_rent)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.green, marginTop: 2 }}>AED {fmt(r.max_rent_aed)}/yr</div>
                               </div>
                             </div>
                           </PCard>
@@ -917,8 +927,8 @@ export function ProjectsPage() {
                             </div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
                               {ejari.map((e: R) => {
-                                const spread = e.max_rent && e.min_rent ? Math.round(((e.max_rent - e.min_rent) / e.min_rent) * 100) : 0;
-                                return `${e.unit_type}: AED ${fmt(e.min_rent)} to ${fmt(e.max_rent)}/yr (${spread}% spread across ${e.contract_count} contracts). `;
+                                const spread = e.max_rent_aed && e.min_rent_aed ? Math.round(((e.max_rent_aed - e.min_rent_aed) / e.min_rent_aed) * 100) : 0;
+                                return `${e.bedrooms}: AED ${fmt(e.min_rent_aed)} to ${fmt(e.max_rent_aed)}/yr (${spread}% spread across ${e.contract_count} contracts). `;
                               }).join('')}
                               The ONLY variables are floor and orientation. The unit you pick matters more than the building you pick.
                             </div>
