@@ -62,6 +62,15 @@ const CAT_COLORS: Record<string, string> = {
   lagoon: '#06b6d4', default: '#94a3b8',
 };
 
+/** Convert community_key from masterplan_images format to RPC format.
+ *  e.g. "ARABIAN RANCHES III" → "ARABIAN_RANCHES_3"
+ *       "DAMAC HILLS 2" → "DAMAC_HILLS_2"
+ *       "DUBAI HILLS" → "DUBAI_HILLS" */
+function toRpcKey(key: string): string {
+  const romanMap: Record<string, string> = { I: '1', II: '2', III: '3', IV: '4', V: '5' };
+  return key.split(' ').map(w => romanMap[w] ?? w).join('_');
+}
+
 /** Try to parse a geometry value from any format PostGIS/PostgREST may return */
 function parseGeometry(val: unknown): R | null {
   if (!val) return null;
@@ -221,65 +230,6 @@ export function SatellitePage() {
     })();
   }, []);
 
-  /** Fetch community boundary polygon via RPC ST_AsGeoJSON or from layers.communities */
-  const fetchBoundary = useCallback(async (com: Community) => {
-    try {
-      // Try RPC to get boundary as GeoJSON (server-side ST_AsGeoJSON conversion)
-      const { data: rpcData, error: rpcErr } = await sb.rpc('get_community_boundary', {
-        p_community_key: com.community_key,
-      });
-      if (!rpcErr && rpcData) {
-        const geo = typeof rpcData === 'string' ? JSON.parse(rpcData) : rpcData;
-        if (geo && (geo.type === 'Polygon' || geo.type === 'MultiPolygon')) {
-          setBoundaryGeoJSON({
-            type: 'FeatureCollection',
-            features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
-          });
-          return;
-        }
-        if (geo?.type === 'FeatureCollection') {
-          setBoundaryGeoJSON(geo);
-          return;
-        }
-      }
-    } catch {
-      // RPC doesn't exist — expected
-    }
-
-    try {
-      // Fallback: try layers.communities with select('*') and parse whatever we get
-      const { data: comRows } = await layers().from('communities')
-        .select('*').limit(200);
-      if (comRows?.length) {
-        const keyNorm = com.community_key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const nameNorm = com.community_name.toLowerCase();
-
-        for (const row of comRows) {
-          const r = row as R;
-          // Match by key or name
-          const rKey = String(r.community_key || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          const rName = String(r.community_name || r.name || '').toLowerCase();
-          if (rKey !== keyNorm && !rName.includes(nameNorm) && !nameNorm.includes(rName)) continue;
-
-          // Found matching row — try to extract polygon
-          const geo = extractPolygon(r);
-          if (geo) {
-            const fc = geo.type === 'FeatureCollection' ? geo as GeoJSONFC
-              : geo.type === 'Feature' ? { type: 'FeatureCollection' as const, features: [geo] }
-              : { type: 'FeatureCollection' as const, features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }] };
-            setBoundaryGeoJSON(fc);
-            return;
-          }
-        }
-      }
-    } catch {
-      // layers.communities query failed
-    }
-
-    // No real boundary found
-    setBoundaryGeoJSON(null);
-  }, []);
-
   const loadCommunity = async (com: Community) => {
     setSelected(com);
     setAmenities([]);
@@ -290,21 +240,87 @@ export function SatellitePage() {
     setPopupAmenity(null);
     setStatus('Loading...');
 
-    // Boundary (async, fires in background)
-    fetchBoundary(com);
+    const rpcKey = toRpcKey(com.community_key);
+    let rpcWorked = false;
 
-    // Amenities from cache
-    const cache = amenityCacheRef.current;
-    if (cache?.length) {
-      const inBbox = cache.filter(a =>
-        a.lng >= com.bbox_west && a.lng <= com.bbox_east
-        && a.lat >= com.bbox_south && a.lat <= com.bbox_north
-      );
-      setAmenities(inBbox);
-      setStatus(`${inBbox.length} amenities · ${com.community_name}`);
-    } else {
-      setStatus(`${com.amenity_count} amenities (seed) · ${com.community_name}`);
+    // ── Primary: use get_community_map_layer RPC (returns boundary + amenities + centroid) ──
+    try {
+      const { data: rpcData, error: rpcErr } = await sb.rpc('get_community_map_layer', {
+        p_community_key: rpcKey,
+      });
+
+      if (!rpcErr && rpcData) {
+        const d = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as R;
+        console.log('[Satellite] RPC get_community_map_layer keys:', Object.keys(d));
+
+        // Boundary polygon
+        const boundary = d.boundary ?? d.boundary_geojson;
+        if (boundary) {
+          const geo = typeof boundary === 'string' ? JSON.parse(boundary) : boundary;
+          if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
+            setBoundaryGeoJSON({
+              type: 'FeatureCollection',
+              features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
+            });
+          } else if (geo.type === 'FeatureCollection') {
+            setBoundaryGeoJSON(geo);
+          } else if (geo.type === 'Feature') {
+            setBoundaryGeoJSON({ type: 'FeatureCollection', features: [geo] });
+          }
+        }
+
+        // Amenity pins from RPC
+        const rpcAmenities = d.amenities;
+        if (Array.isArray(rpcAmenities) && rpcAmenities.length > 0) {
+          const pins: Amenity[] = rpcAmenities.map((a: R, i: number) => {
+            // lnglat could be [lng, lat] array or {lng, lat} object
+            let lat = 0, lng = 0;
+            if (Array.isArray(a.lnglat)) {
+              [lng, lat] = a.lnglat;
+            } else if (a.lnglat && typeof a.lnglat === 'object') {
+              lng = a.lnglat.lng ?? a.lnglat[0] ?? 0;
+              lat = a.lnglat.lat ?? a.lnglat[1] ?? 0;
+            } else if (a.lng != null && a.lat != null) {
+              lng = Number(a.lng); lat = Number(a.lat);
+            } else if (a.longitude != null && a.latitude != null) {
+              lng = Number(a.longitude); lat = Number(a.latitude);
+            }
+            return {
+              id: a.id ?? i,
+              name: a.name || a.amenity_name || a.plot_number || 'Unknown',
+              amenity_type: String(a.amenity_type || a.amenity_class || a.type || '').toLowerCase(),
+              amenity_category: String(a.amenity_category || a.category || '').toLowerCase(),
+              is_operational: a.is_operational != null ? Boolean(a.is_operational) : (a.delivery_verdict === 'DELIVERED' || a.delivery_verdict === 'PARTIAL'),
+              lat, lng,
+            };
+          }).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
+          setAmenities(pins);
+          setStatus(`${pins.length} amenities · ${com.community_name}`);
+          rpcWorked = true;
+          console.log(`[Satellite] RPC returned ${pins.length} amenity pins`);
+        }
+      } else if (rpcErr) {
+        console.warn('[Satellite] RPC get_community_map_layer error:', rpcErr.message);
+      }
+    } catch (e) {
+      console.warn('[Satellite] RPC failed:', e);
     }
+
+    // ── Fallback: use cached masterplan_gee_queue data for amenity pins ──
+    if (!rpcWorked) {
+      const cache = amenityCacheRef.current;
+      if (cache?.length) {
+        const inBbox = cache.filter(a =>
+          a.lng >= com.bbox_west && a.lng <= com.bbox_east
+          && a.lat >= com.bbox_south && a.lat <= com.bbox_north
+        );
+        setAmenities(inBbox);
+        setStatus(`${inBbox.length} amenities · ${com.community_name}`);
+      } else {
+        setStatus(`${com.amenity_count} amenities (seed) · ${com.community_name}`);
+      }
+    }
+
     setLoading(false);
   };
 
