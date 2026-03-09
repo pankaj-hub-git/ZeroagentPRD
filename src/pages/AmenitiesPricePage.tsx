@@ -32,13 +32,15 @@ Chart.register(
 ZEROAGENT — DUBAI PRICE INTELLIGENCE
 
 Live PSF benchmarks · Micro-catalyst events · Unit pricing
-58 communities · Amenities & catalyst price analysis
+59 communities · Amenities & catalyst price analysis
 
 DATA SOURCES (Supabase):
-xray_psm_benchmarks       → PSF by segment
+community_price_index      → quarterly price index per community
+community_catalyst_events  → dated catalyst annotations per community
+xray_psm_benchmarks        → PSF by segment
 xray_projects              → project-level pricing
 xray_community_amenities   → amenities & catalyst events
-dhe_buildings / dhe_units  → DHE delivered unit prices
+dhe_buildings / dhe_units   → DHE delivered unit prices
 
 SUPABASE: awreaqilmwfpvaxwanpa.supabase.co
 ═══════════════════════════════════════════════════════════
@@ -128,27 +130,11 @@ const PROJ_STATUS: Record<string, string> = {
   completed: "✅", on_hold: "⏸",
 };
 
-// ─── DHE event-study data ───────────────────────────────
-const DHE_LABELS = [
-  "Q1'19","Q2'19","Q3'19","Q4'19","Q1'20","Q2'20","Q3'20","Q4'20",
-  "Q1'21","Q2'21","Q3'21","Q4'21","Q1'22","Q2'22","Q3'22","Q4'22",
-  "Q1'23","Q2'23","Q3'23","Q4'23","Q1'24","Q2'24","Q3'24","Q4'24",
-  "Q1'25","Q2'25","Q3'25","Q4'25","Q1'26",
-];
-const DHE = [100,106,113,109,103,97,102,103,119,123,139,150,162,166,178,213,204,209,227,242,262,261,268,274,276,283,292,298,298];
-const DUBAI_BASE = [100,94,91,94,92,90,86,88,97,104,110,111,130,129,128,131,140,141,143,143,156,156,157,168,176,186,183,185,193];
-const ALPHA = DHE.map((v, i) => v - DUBAI_BASE[i]);
-const DHE_EVT = [
-  { idx: 6, e: "🏫", lbl: "GEMS School", r: 0 },
-  { idx: 8, e: "🏠", lbl: "Phase 1 H/O", r: 1 },
-  { idx: 11, e: "🌳", lbl: "Critical Mass", r: 0 },
-  { idx: 15, e: "🛍️", lbl: "Mall Opens", r: 1 },
-  { idx: 18, e: "🍽️", lbl: "Retail Strip", r: 0 },
-  { idx: 20, e: "🚗", lbl: "Road Upgrade", r: 1 },
-  { idx: 22, e: "🏨", lbl: "Luxury Launch", r: 0 },
-  { idx: 27, e: "🔥", lbl: "Peak ×3", r: 1 },
-];
-const ANN_Y = [310, 278];
+// ─── DHE hardcoded override (real transaction data) ─────
+const DHE_OVERRIDE: Record<number, { community: number; dubai: number }> = {};
+const DHE_REAL = [100,106,113,109,103,97,102,103,119,123,139,150,162,166,178,213,204,209,227,242,262,261,268,274,276,283,292,298,298];
+const DUBAI_REAL = [100,94,91,94,92,90,86,88,97,104,110,111,130,129,128,131,140,141,143,143,156,156,157,168,176,186,183,185,193];
+DHE_REAL.forEach((v, i) => { DHE_OVERRIDE[i] = { community: v, dubai: DUBAI_REAL[i] }; });
 
 // ─── Helpers ────────────────────────────────────────────
 function fmtAED(n: number | string) {
@@ -201,6 +187,21 @@ interface AmenityRow {
   expected_completion_date: string;
 }
 
+interface IndexRow {
+  quarter_num: number;
+  quarter_label: string;
+  community_idx: string;
+  dubai_idx: string;
+}
+
+interface CatalystRow {
+  amenity_name: string;
+  amenity_category: string;
+  quarter_num: number;
+  label_short: string;
+  icon: string;
+}
+
 // ─── Spinner ────────────────────────────────────────────
 function Spinner({ colors }: { colors: ThemeColors }) {
   return (
@@ -240,6 +241,9 @@ export function AmenitiesPricePage() {
   const [amenLoading, setAmenLoading] = useState(true);
   const [amenErr, setAmenErr] = useState<string | null>(null);
 
+  // Chart data state (for legend visibility)
+  const [hasIndexChart, setHasIndexChart] = useState(false);
+
   // Stats
   const [stats, setStats] = useState({
     topPsf: "—", topLbl: "Top segment PSF", topYoy: "—",
@@ -248,7 +252,7 @@ export function AmenitiesPricePage() {
     avgYoy: "—", period: "Q4 2025",
   });
   const [anchorBadge, setAnchorBadge] = useState("Fetching live data…");
-  const [chartTitle, setChartTitle] = useState("PSF Benchmark");
+  const [chartTitle, setChartTitle] = useState("Micro-Catalyst Event Study");
   const [chartSub, setChartSub] = useState("Loading…");
 
   // ─── Chart rendering ───────────────────────────────
@@ -259,20 +263,62 @@ export function AmenitiesPricePage() {
     }
   }, []);
 
-  const renderDHEChart = useCallback(
-    (c: ThemeColors) => {
+  const renderIndexChart = useCallback(
+    (indexData: IndexRow[], catalysts: CatalystRow[], communityName: string, c: ThemeColors) => {
       destroyChart();
       const ctx = chartRef.current?.getContext("2d");
-      if (!ctx) return;
+      if (!ctx || !indexData.length) return;
 
+      // Sort by quarter_num
+      const sorted = [...indexData].sort((a, b) => a.quarter_num - b.quarter_num);
+      const isDHE = communityName === "Dubai Hills Estate";
+
+      const labels = sorted.map((d) => d.quarter_label);
+      const commValues = sorted.map((d) => {
+        const n = d.quarter_num;
+        if (isDHE && DHE_OVERRIDE[n]) return DHE_OVERRIDE[n].community;
+        return Number(d.community_idx);
+      });
+      const dubaiValues = sorted.map((d) => {
+        const n = d.quarter_num;
+        if (isDHE && DHE_OVERRIDE[n]) return DHE_OVERRIDE[n].dubai;
+        return Number(d.dubai_idx);
+      });
+      const alphaValues = commValues.map((v, i) => v - dubaiValues[i]);
+
+      // Dynamic Y-axis
+      const yMax = Math.max(...commValues, ...dubaiValues);
+      const yMaxRounded = Math.ceil(yMax / 50) * 50 + 30;
+
+      // Build annotations from catalyst events
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ann: Record<string, any> = {};
-      DHE_EVT.forEach((ev, i) => {
-        ann["vl" + i] = { type: "line", xMin: ev.idx, xMax: ev.idx, borderColor: c.border, borderWidth: 1, borderDash: [5, 5] };
-        ann["pt" + i] = { type: "point", xValue: ev.idx, yValue: DHE[ev.idx], radius: 5, backgroundColor: c.gold, borderColor: c.text, borderWidth: 1.5 };
+      // De-duplicate by quarter_num
+      const seen = new Set<number>();
+      const dedupCatalysts = catalysts.filter((ev) => {
+        if (seen.has(ev.quarter_num)) return false;
+        seen.add(ev.quarter_num);
+        return true;
+      });
+
+      // Two label Y rows to avoid overlap
+      const annY1 = Math.round(yMaxRounded * 0.93);
+      const annY2 = Math.round(yMaxRounded * 0.80);
+      const annYRows = [annY1, annY2];
+
+      dedupCatalysts.forEach((ev, i) => {
+        const qIdx = sorted.findIndex((d) => d.quarter_num === ev.quarter_num);
+        if (qIdx < 0) return;
+
+        const commVal = commValues[qIdx];
+        const lbl = ev.label_short || ev.amenity_name.slice(0, 14);
+        const icon = ev.icon || CAT_ICON[ev.amenity_category] || "📍";
+
+        ann["vl" + i] = { type: "line", xMin: qIdx, xMax: qIdx, borderColor: c.border, borderWidth: 1, borderDash: [5, 5] };
+        ann["pt" + i] = { type: "point", xValue: qIdx, yValue: commVal, radius: 5, backgroundColor: c.gold, borderColor: c.text, borderWidth: 1.5 };
         ann["lb" + i] = {
-          type: "label", xValue: ev.idx, yValue: ANN_Y[ev.r],
-          content: [ev.e + " " + ev.lbl], color: c.text,
+          type: "label", xValue: qIdx, yValue: annYRows[i % 2],
+          content: [icon + " " + lbl], color: c.text,
           font: { size: 10, weight: "600" as const },
           backgroundColor: c.bg + "EE", padding: { top: 4, bottom: 4, left: 6, right: 6 },
           borderRadius: 5, borderColor: c.gold + "55", borderWidth: 1,
@@ -282,11 +328,11 @@ export function AmenitiesPricePage() {
       chartInst.current = new Chart(ctx, {
         type: "line",
         data: {
-          labels: DHE_LABELS,
+          labels,
           datasets: [
-            { label: "DHE", data: DHE, borderColor: c.green, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, tension: 0.35, fill: false },
-            { label: "Dubai", data: DUBAI_BASE, borderColor: c.red, borderWidth: 2, pointRadius: 0, tension: 0.35, borderDash: [8, 4], fill: false },
-            { label: "Alpha", data: ALPHA, borderColor: c.gold + "99", borderWidth: 1.5, pointRadius: 0, tension: 0.35, fill: { target: "origin", above: c.green + "16", below: c.red + "16" } },
+            { label: communityName, data: commValues, borderColor: c.green, borderWidth: 3, pointRadius: 0, pointHoverRadius: 6, tension: 0.35, fill: false },
+            { label: "Dubai", data: dubaiValues, borderColor: c.red, borderWidth: 2, pointRadius: 0, tension: 0.35, borderDash: [8, 4], fill: false },
+            { label: "Alpha", data: alphaValues, borderColor: c.gold + "99", borderWidth: 1.5, pointRadius: 0, tension: 0.35, fill: { target: "origin", above: c.green + "16", below: c.red + "16" } },
           ],
         },
         options: {
@@ -295,12 +341,23 @@ export function AmenitiesPricePage() {
           interaction: { intersect: false, mode: "index" },
           plugins: {
             legend: { display: false },
-            tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.textSecondary, borderColor: c.border, borderWidth: 1, padding: 12 },
+            tooltip: {
+              backgroundColor: c.surface, titleColor: c.text, bodyColor: c.textSecondary,
+              borderColor: c.border, borderWidth: 1, padding: 12,
+              callbacks: {
+                label: (ctx2) => {
+                  const v = ctx2.parsed?.y ?? 0;
+                  if (ctx2.dataset.label === "Alpha") return `  Alpha: ${v > 0 ? "+" : ""}${v.toFixed(0)} pts`;
+                  if (ctx2.dataset.label === "Dubai") return `  Dubai: ${v.toFixed(0)}`;
+                  return `  ${communityName}: ${v.toFixed(0)}`;
+                },
+              },
+            },
             annotation: { annotations: ann },
           },
           scales: {
             x: { grid: { color: c.border + "44" }, border: { color: c.border }, ticks: { color: c.textSecondary, font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 15, padding: 8 } },
-            y: { min: -20, max: 330, grid: { color: c.border + "66" }, border: { color: c.border }, ticks: { color: c.textSecondary, font: { size: 11 }, padding: 10, stepSize: 50 }, title: { display: true, text: "Price Index (Q1 2019 = 100)", color: c.textSecondary, font: { size: 11 }, padding: { bottom: 8 } } },
+            y: { min: -30, max: yMaxRounded, grid: { color: c.border + "66" }, border: { color: c.border }, ticks: { color: c.textSecondary, font: { size: 11 }, padding: 10, stepSize: 50 }, title: { display: true, text: "Price Index (Q1 2019 = 100)", color: c.textSecondary, font: { size: 11 }, padding: { bottom: 8 } } },
           },
         },
       });
@@ -365,46 +422,75 @@ export function AmenitiesPricePage() {
     let cancelled = false;
     const isDHE = community === "Dubai Hills Estate";
 
-    setChartTitle(isDHE ? "Micro-Catalyst Event Study — Dubai Hills Estate" : `PSF Benchmark — ${community}`);
-    setChartSub(isDHE ? "Resale price index vs. Dubai baseline · Q1 2019–Q1 2026 · Off-plan excluded" : "Price per sq ft by segment · Source: xray_psm_benchmarks");
+    setChartTitle(`Micro-Catalyst Event Study — ${community}`);
+    setChartSub("Price index vs. Dubai baseline · Q1 2019–Q1 2026 · Off-plan excluded");
     setAnchorBadge("Fetching live data…");
+    setHasIndexChart(false);
 
     setPsmLoading(true); setPsmErr(null); setPsm(null);
     setProjLoading(true); setProjErr(null); setProjects(null);
     setAmenLoading(true); setAmenErr(null); setAmenities(null);
     setStats((s) => ({ ...s, topPsf: "—", segCount: "—", projCount: "—", avgYoy: "—" }));
 
-    // 1. PSM Benchmarks
-    sbGet("xray_psm_benchmarks", {
+    // 1. Index chart data (community_price_index + community_catalyst_events) + PSM in parallel
+    const indexP = sbGet("community_price_index", {
+      select: "quarter_num,quarter_label,community_idx,dubai_idx",
+      master_community: `eq.${community}`,
+      order: "quarter_num",
+    }).catch(() => [] as IndexRow[]);
+
+    const catalystP = sbGet("community_catalyst_events", {
+      select: "amenity_name,amenity_category,quarter_num,label_short,icon",
+      master_community: `eq.${community}`,
+      order: "quarter_num",
+    }).catch(() => [] as CatalystRow[]);
+
+    const psmP = sbGet("xray_psm_benchmarks", {
       select: "property_segment,psm_avg,psm_low,psm_high,yoy_price_change_pct,maturity_stage,data_period",
       master_community: `eq.${community}`,
       order: "psm_avg.desc",
-    })
-      .then((data: PsmRow[]) => {
+    });
+
+    Promise.all([indexP, catalystP, psmP])
+      .then(([indexData, catalysts, psmData]: [IndexRow[], CatalystRow[], PsmRow[]]) => {
         if (cancelled) return;
-        setPsm(data);
+
+        // PSM panel
+        setPsm(psmData);
         setPsmLoading(false);
 
-        if (isDHE) renderDHEChart(colors);
-        else renderPSFChart(data, colors);
-
-        if (data.length) {
-          const top = data[0];
-          const avgYoy = (data.reduce((a, d) => a + Number(d.yoy_price_change_pct), 0) / data.length).toFixed(1);
+        if (psmData.length) {
+          const top = psmData[0];
+          const avgYoy = (psmData.reduce((a, d) => a + Number(d.yoy_price_change_pct), 0) / psmData.length).toFixed(1);
           setStats((s) => ({
             ...s,
             topPsf: Number(top.psm_avg).toLocaleString(),
             topLbl: (SEG_LBL[top.property_segment] || top.property_segment) + " PSF",
             topYoy: `+${top.yoy_price_change_pct}% YoY`,
-            segCount: String(data.length),
+            segCount: String(psmData.length),
             maturity: top.maturity_stage || "—",
             avgYoy: `+${avgYoy}%`,
             period: top.data_period || "Q4 2025",
           }));
-          setAnchorBadge(`Top: ${Number(top.psm_avg).toLocaleString()} PSF · ${data.length} segments · ${top.data_period || "Q4 2025"}`);
+          setAnchorBadge(`Top: ${Number(top.psm_avg).toLocaleString()} PSF · ${psmData.length} segments · ${top.data_period || "Q4 2025"}`);
+        }
+
+        // Chart: prefer index chart, fall back to PSF bar chart
+        if (indexData.length > 0) {
+          renderIndexChart(indexData, catalysts, community, colors);
+          setHasIndexChart(true);
+          setChartTitle(`Micro-Catalyst Event Study — ${community}`);
+          setChartSub(`Price index vs. Dubai baseline · Q1 2019–Q1 2026 · ${catalysts.length} catalyst${catalysts.length !== 1 ? "s" : ""} tracked`);
+        } else {
+          renderPSFChart(psmData, colors);
+          setHasIndexChart(false);
+          setChartTitle(`PSF Benchmark — ${community}`);
+          setChartSub("Price per sq ft by segment · Source: xray_psm_benchmarks");
         }
       })
-      .catch((e: Error) => { if (!cancelled) { setPsmErr(e.message); setPsmLoading(false); } });
+      .catch((e: Error) => {
+        if (!cancelled) { setPsmErr(e.message); setPsmLoading(false); }
+      });
 
     // 2. Projects / Unit Prices
     if (isDHE) {
@@ -485,7 +571,7 @@ export function AmenitiesPricePage() {
       .catch((e: Error) => { if (!cancelled) { setAmenErr(e.message); setAmenLoading(false); } });
 
     return () => { cancelled = true; };
-  }, [community, colors, renderDHEChart, renderPSFChart]);
+  }, [community, colors, renderIndexChart, renderPSFChart]);
 
   // ─── Styles (theme-based) ─────────────────────────
   const mono = "'DM Mono','Fira Code',monospace";
@@ -508,8 +594,6 @@ export function AmenitiesPricePage() {
   const chipHi: React.CSSProperties = {
     ...chip, borderColor: colors.green + "4D", color: colors.green,
   };
-
-  const isDHE = community === "Dubai Hills Estate";
 
   return (
     <div style={{ height: "100%", overflowY: "auto", background: colors.bg, color: colors.text, fontFamily: sans, padding: "20px 16px 48px" }}>
@@ -609,11 +693,11 @@ export function AmenitiesPricePage() {
           <div style={{ height: 460 }}>
             <canvas ref={chartRef} style={{ display: "block", width: "100%", height: "100%" }} />
           </div>
-          {/* Legend — only for DHE event study */}
-          {isDHE && (
+          {/* Legend — shown for index charts */}
+          {hasIndexChart && (
             <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14, justifyContent: "center", paddingTop: 12, borderTop: `1px solid ${colors.border}` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: colors.textSecondary, fontFamily: mono }}>
-                <div style={{ width: 22, height: 3, borderRadius: 2, background: colors.green, flexShrink: 0 }} />DHE Resale
+                <div style={{ width: 22, height: 3, borderRadius: 2, background: colors.green, flexShrink: 0 }} />{community} Resale
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: colors.textSecondary, fontFamily: mono }}>
                 <div style={{ width: 22, height: 3, borderRadius: 2, background: colors.red, flexShrink: 0 }} />Dubai Baseline
