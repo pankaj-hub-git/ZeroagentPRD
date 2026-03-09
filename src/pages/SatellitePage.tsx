@@ -36,6 +36,7 @@ interface Amenity {
   lng: number;
   render_as: 'polygon' | 'point';
   area_sqm: number | null;
+  delivery_status: string;
 }
 
 interface AmenityPolygon {
@@ -51,6 +52,7 @@ interface AmenityPolygon {
   tagline: string;
   area_sqm: number | null;
   land_use: string;
+  delivery_status: string;
 }
 
 interface RpcLayerData {
@@ -176,6 +178,20 @@ const SOURCE_LABELS: Record<string, string> = {
   gee_verified: 'GEE Satellite-verified',
   manual: 'Manual Survey',
   dda_plots_union: 'DDA Plots Union',
+};
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  delivered:             { label: 'Delivered',            color: '#3ecf8e', icon: '●' },
+  fully_delivered:       { label: 'Fully Delivered',      color: '#3ecf8e', icon: '●' },
+  operational:           { label: 'Operational',          color: '#3ecf8e', icon: '●' },
+  exceeded:              { label: 'Exceeded',             color: '#3ecf8e', icon: '●' },
+  under_construction:    { label: 'Under Construction',   color: '#f59e0b', icon: '◐' },
+  planned:               { label: 'Planned',              color: '#60a5fa', icon: '○' },
+  pending_verification:  { label: 'Pending Verification', color: '#f59e0b', icon: '◐' },
+  promised:              { label: 'Promised — Unbuilt',   color: '#e05c4a', icon: '○' },
+  missing:               { label: 'Missing',              color: '#e05c4a', icon: '✕' },
+  partial:               { label: 'Partially Delivered',  color: '#c8a84b', icon: '◑' },
+  partially_delivered:   { label: 'Partially Delivered',  color: '#c8a84b', icon: '◑' },
 };
 
 const SIG_EMOJI: Record<string, string> = {
@@ -353,7 +369,8 @@ export function SatellitePage() {
       }
 
       const d = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as RpcLayerData;
-      console.log('[Satellite] RPC response keys:', Object.keys(d));
+      console.log('[Satellite] RPC key:', rpcKey, '| response keys:', Object.keys(d));
+      console.log('[Satellite] amenities:', (d.amenities || []).length, '| polygons:', (d.amenity_polygons || []).length, '| sigs:', (d.signature_amenities || []).length);
 
       // Store metadata
       setRpcMeta({
@@ -407,6 +424,7 @@ export function SatellitePage() {
           rating: a.rating != null ? Number(a.rating) : null,
           render_as: a.render_as === 'polygon' ? 'polygon' as const : 'point' as const,
           area_sqm: a.area_sqm != null ? Number(a.area_sqm) : null,
+          delivery_status: String(a.delivery_status || a.verification_status || a.satellite_status || ''),
           lat, lng,
         };
       };
@@ -436,6 +454,7 @@ export function SatellitePage() {
           tagline: ap.tagline || '',
           area_sqm: ap.area_sqm != null ? Number(ap.area_sqm) : null,
           land_use: ap.land_use || '',
+          delivery_status: String(ap.delivery_status || ap.verification_status || ''),
         }));
       setAmenityPolygons(newPolys);
       console.log(`[Satellite] ${newPolys.length} amenity polygons loaded`);
@@ -464,8 +483,8 @@ export function SatellitePage() {
     amenities.filter(a => {
       const cat = a.amenity_type || a.amenity_category || '';
       if (filterCat !== 'all' && cat !== filterCat) return false;
-      if (filterOp === 'op' && !a.is_operational) return false;
-      if (filterOp === 'not' && a.is_operational) return false;
+      if (filterOp === 'op' && !isDelivered(a)) return false;
+      if (filterOp === 'not' && isDelivered(a)) return false;
       return true;
     }),
     [amenities, filterCat, filterOp]
@@ -479,7 +498,12 @@ export function SatellitePage() {
     [communities, search]
   );
 
-  const opCount = amenities.filter(a => a.is_operational).length;
+  // Status counts: use delivery_status if available, fall back to is_operational
+  const isDelivered = (a: Amenity) => {
+    if (a.delivery_status) return ['delivered', 'fully_delivered', 'operational', 'exceeded'].includes(a.delivery_status);
+    return a.is_operational;
+  };
+  const opCount = amenities.filter(isDelivered).length;
   const catCounts = useMemo(() =>
     categories.reduce<Record<string, number>>((acc, cat) => ({
       ...acc, [cat]: amenities.filter(a => (a.amenity_type || a.amenity_category) === cat).length,
@@ -789,6 +813,7 @@ export function SatellitePage() {
                           amenity_type: ap.type, amenity_category: ap.category,
                           is_operational: true, is_signature: ap.is_signature,
                           tagline: ap.tagline, lifecycle_stage: 'operational',
+                          delivery_status: ap.delivery_status,
                           source: '', rating: null, render_as: 'polygon',
                           area_sqm: ap.area_sqm,
                           lat: ap.centroid_lnglat[1], lng: ap.centroid_lnglat[0],
@@ -840,9 +865,11 @@ export function SatellitePage() {
                           <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                             {getAmenityLabel(popupAmenity.amenity_type || popupAmenity.amenity_category)}
                           </span>
-                          <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
-                            {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
-                          </span>
+                          {(() => {
+                            const sk = popupAmenity.delivery_status || (popupAmenity.is_operational ? 'operational' : 'planned');
+                            const st = STATUS_CONFIG[sk] ?? { label: sk.replace(/_/g, ' '), color: '#8899aa', icon: '●' };
+                            return <span style={{ color: st.color }}>{st.icon} {st.label}</span>;
+                          })()}
                           {popupAmenity.lifecycle_stage && popupAmenity.lifecycle_stage !== 'operational' && (
                             <span style={{ color: textDim, fontStyle: 'italic' }}>{popupAmenity.lifecycle_stage}</span>
                           )}
