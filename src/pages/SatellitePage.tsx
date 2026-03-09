@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from '@/lib/theme';
-import { bronze, layers, sb } from '@/lib/supabase';
-import { Loader2, Search, Sun, Moon } from 'lucide-react';
+import { sb } from '@/lib/supabase';
+import { Loader2, Search, Sun, Moon, Star } from 'lucide-react';
 import MapGL, { Marker, Popup, Source, Layer, type MapRef } from 'react-map-gl';
 import type { FillLayer, LineLayer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -11,17 +11,13 @@ type R = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GeoJSONFC = { type: 'FeatureCollection'; features: any[] };
 
+/* ── Interfaces ── */
 interface Community {
   community_key: string;
-  community_name: string;
-  developer: string;
-  image_url: string;
-  bbox_west: number;
-  bbox_south: number;
-  bbox_east: number;
-  bbox_north: number;
-  amenity_count: number;
-  source_confidence: string;
+  display_name: string;
+  centroid_lnglat: [number, number];
+  bbox: [number, number, number, number]; // [west, south, east, north]
+  area_sqkm: number;
 }
 
 interface Amenity {
@@ -30,116 +26,77 @@ interface Amenity {
   amenity_type: string;
   amenity_category: string;
   is_operational: boolean;
+  is_signature: boolean;
+  tagline: string;
+  lifecycle_stage: string;
+  source: string;
+  rating: number | null;
   lat: number;
   lng: number;
 }
 
-// Pre-seeded from bronze.masterplan_images
-const SEED_COMMUNITIES: Community[] = [
-  { community_key:"DUBAI HILLS", community_name:"Dubai Hills Estate", developer:"DUBAI HILLS ESTATE L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/dubai-hills-estate_xl.jpg", bbox_west:55.236189, bbox_south:25.087349, bbox_east:55.277942, bbox_north:25.136933, amenity_count:92, source_confidence:"HIGH" },
-  { community_key:"ARABIAN RANCHES I", community_name:"Arabian Ranches I", developer:"EMAAR PROPERTIES (P.J.S.C)", image_url:"https://static.propsearch.ae/dubai-locations/arabian-ranches-28500.jpg", bbox_west:55.250398, bbox_south:25.037445, bbox_east:55.29957, bbox_north:25.062819, amenity_count:39, source_confidence:"HIGH" },
-  { community_key:"ARABIAN RANCHES III", community_name:"Arabian Ranches III", developer:"EMAAR DEVELOPMENT P.J.S.C.", image_url:"https://static.propsearch.ae/dubai-locations/arabian-ranches-3_xl.jpg", bbox_west:55.31533, bbox_south:25.059215, bbox_east:55.337403, bbox_north:25.077462, amenity_count:30, source_confidence:"HIGH" },
-  { community_key:"DAMAC HILLS", community_name:"DAMAC Hills", developer:"DAMAC CRESCENT PROPERTIES", image_url:"https://static.propsearch.ae/dubai-locations/damac-hills_xl.jpg", bbox_west:55.242079, bbox_south:25.008587, bbox_east:55.265974, bbox_north:25.033761, amenity_count:15, source_confidence:"HIGH" },
-  { community_key:"TOWN SQUARE", community_name:"Town Square", developer:"NSHAMA PROPERTIES", image_url:"https://static.propsearch.ae/dubai-locations/town-square-24502_xl.jpg", bbox_west:55.275324, bbox_south:24.991579, bbox_east:55.304492, bbox_north:25.017763, amenity_count:13, source_confidence:"HIGH" },
-  { community_key:"MUDON", community_name:"Mudon", developer:"DUBAI LAND RESIDENCES (L.L.C)", image_url:"https://static.propsearch.ae/dubai-locations/mudon_xl.jpg", bbox_west:55.251654, bbox_south:25.004784, bbox_east:55.278357, bbox_north:25.02942, amenity_count:10, source_confidence:"MEDIUM" },
-  { community_key:"DUBAI SPORTS CITY", community_name:"Dubai Sports City", developer:"DUBAI SPORTS CITY (L.L.C)", image_url:"https://static.propsearch.ae/photos/dubai/areas/sports-city-75.jpg", bbox_west:55.202921, bbox_south:25.024351, bbox_east:55.229903, bbox_north:25.049187, amenity_count:10, source_confidence:"HIGH" },
-  { community_key:"VILLANOVA", community_name:"Villanova", developer:"NORTH DUBAILAND PROJECTS L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/villanova_xl.jpg", bbox_west:55.338503, bbox_south:25.066744, bbox_east:55.368231, bbox_north:25.083394, amenity_count:8, source_confidence:"MEDIUM" },
-  { community_key:"DAMAC LAGOONS", community_name:"DAMAC Lagoons", developer:"ISLAND OASIS PROPERTIES", image_url:"https://static.propsearch.ae/dubai-locations/damac-lagoons_xl.jpg", bbox_west:55.218984, bbox_south:24.999364, bbox_east:55.248812, bbox_north:25.022276, amenity_count:6, source_confidence:"HIGH" },
-  { community_key:"FALCON CITY OF WONDERS", community_name:"Falconcity of Wonders", developer:"FALCONCITY OF WONDERS L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/falcon-city-of-wonders_xl.jpg", bbox_west:55.333535, bbox_south:25.084923, bbox_east:55.358223, bbox_north:25.107722, amenity_count:3, source_confidence:"MEDIUM" },
-  { community_key:"DUBAI CREEK HARBOUR", community_name:"Dubai Creek Harbour", developer:"DUBAI CREEK HARBOUR L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/dubai-creek-harbour_xl.jpg", bbox_west:55.33931, bbox_south:25.186818, bbox_east:55.369109, bbox_north:25.211093, amenity_count:2, source_confidence:"HIGH" },
-  { community_key:"NAD AL SHEBA GARDENS", community_name:"Nad Al Sheba Gardens", developer:"SHAMAL ESTATES L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/nad-al-sheba-gardens_xl.jpg", bbox_west:55.289687, bbox_south:25.130445, bbox_east:55.323611, bbox_north:25.141787, amenity_count:2, source_confidence:"MEDIUM" },
-  { community_key:"DAMAC HILLS 2", community_name:"DAMAC Hills 2 (Akoya)", developer:"FRONT LINE INVESTMENT MANAGEMENT L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/damac-hills-2_xl.jpg", bbox_west:55.369304, bbox_south:24.975749, bbox_east:55.39947, bbox_north:24.999317, amenity_count:1, source_confidence:"HIGH" },
-  { community_key:"TILAL AL GHAF", community_name:"Tilal Al Ghaf", developer:"MAJID AL FUTTAIM TILAL AL GHAF DEV", image_url:"https://static.propsearch.ae/dubai-locations/tilal-al-ghaf_5FEW5_xl.jpg", bbox_west:55.211793, bbox_south:25.014085, bbox_east:55.23727, bbox_north:25.033641, amenity_count:0, source_confidence:"HIGH" },
-  { community_key:"DAMAC ISLANDS", community_name:"DAMAC Islands", developer:"DAMAC ELITE INVESTMENT CO. L.L.C", image_url:"https://static.propsearch.ae/dubai-locations/damac-islands_SnAAq_xl.jpg", bbox_west:55.287678, bbox_south:25.021624, bbox_east:55.316288, bbox_north:25.041841, amenity_count:0, source_confidence:"HIGH" },
-  { community_key:"THE VALLEY", community_name:"The Valley", developer:"EMAAR DEVELOPMENT P.J.S.C.", image_url:"https://static.propsearch.ae/dubai-locations/the-valley_ivMDh_xl.jpg", bbox_west:55.421864, bbox_south:24.995564, bbox_east:55.460501, bbox_north:25.024325, amenity_count:0, source_confidence:"HIGH" },
-];
+interface RpcLayerData {
+  boundary: R | null;
+  centroid_lnglat: [number, number];
+  bbox: [number, number, number, number];
+  amenities: R[];
+  signature_amenities: R[];
+  boundary_source: string;
+  area_sqkm: number;
+  display_name: string;
+}
+
+/* ── Label maps ── */
+const AMENITY_LABELS: Record<string, string> = {
+  park: 'Park / Garden', restaurant: 'Restaurant', retail: 'Retail / Mall',
+  school: 'School', mosque: 'Mosque', gym: 'Gym / Fitness', clinic: 'Clinic',
+  supermarket: 'Supermarket', hospital: 'Hospital', transport: 'Transport',
+  leisure: 'Leisure', entertainment: 'Entertainment', recreation: 'Recreation',
+  promenade: 'Promenade / Walk', lagoon: 'Lagoon / Water', pool: 'Pool',
+  playground: 'Playground', nursery: 'Nursery', pharmacy: 'Pharmacy',
+  community_centre: 'Community Centre', dog_park: 'Dog Park',
+  sports_court: 'Sports Court', cycling_track: 'Cycling Track',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  osm: 'OpenStreetMap',
+  google_places: 'Google Places',
+  dld_masterplan: 'DLD Masterplan',
+  gee_verified: 'GEE Satellite-verified',
+  manual: 'Manual Survey',
+};
+
+const SIG_EMOJI: Record<string, string> = {
+  park: '🌳', restaurant: '🍽️', retail: '🛍️', school: '🏫',
+  mosque: '🕌', gym: '💪', clinic: '🏥', supermarket: '🛒',
+  hospital: '🏥', transport: '🚇', leisure: '🎡', entertainment: '🎭',
+  recreation: '⛳', promenade: '🚶', lagoon: '🌊', pool: '🏊',
+  playground: '🛝', default: '📍',
+};
 
 const CAT_COLORS: Record<string, string> = {
   park: '#22c55e', restaurant: '#f97316', retail: '#a855f7', school: '#3b82f6',
   mosque: '#10b981', gym: '#ef4444', clinic: '#06b6d4', supermarket: '#eab308',
   hospital: '#ec4899', transport: '#64748b', leisure: '#f59e0b',
   entertainment: '#a855f7', recreation: '#22c55e', promenade: '#ec4899',
-  lagoon: '#06b6d4', default: '#94a3b8',
+  lagoon: '#06b6d4', pool: '#3b82f6', playground: '#f59e0b',
+  default: '#94a3b8',
 };
 
-/** Convert community_key from masterplan_images format to RPC format.
- *  e.g. "ARABIAN RANCHES III" → "ARABIAN_RANCHES_3"
- *       "DAMAC HILLS 2" → "DAMAC_HILLS_2"
- *       "DUBAI HILLS" → "DUBAI_HILLS" */
+/** Convert community_key to RPC format: "ARABIAN RANCHES III" → "ARABIAN_RANCHES_3" */
 function toRpcKey(key: string): string {
   const romanMap: Record<string, string> = { I: '1', II: '2', III: '3', IV: '4', V: '5' };
   return key.split(' ').map(w => romanMap[w] ?? w).join('_');
-}
-
-/** Try to parse a geometry value from any format PostGIS/PostgREST may return */
-function parseGeometry(val: unknown): R | null {
-  if (!val) return null;
-  // Already a GeoJSON object
-  if (typeof val === 'object' && val !== null && 'type' in (val as R)) return val as R;
-  // GeoJSON string
-  if (typeof val === 'string') {
-    // Could be GeoJSON string
-    if (val.startsWith('{')) {
-      try { return JSON.parse(val); } catch { /* not JSON */ }
-    }
-    // WKB hex string (starts with 01 for little-endian) — we can't parse client-side easily
-    // Just log it so we know
-    if (/^[0-9a-fA-F]+$/.test(val) && val.length > 20) {
-      console.warn('[Satellite] Got WKB hex geometry — need ST_AsGeoJSON on server side. Length:', val.length);
-    }
-  }
-  return null;
-}
-
-/** Extract [lng, lat] from a row that may contain PostGIS geom data */
-function extractPointCoords(row: R): [number, number] | null {
-  // Try geometry columns
-  for (const col of ['geom', 'geometry', 'the_geom', 'wkb_geometry', 'centroid']) {
-    const geo = parseGeometry(row[col]);
-    if (geo?.type === 'Point' && Array.isArray(geo.coordinates)) {
-      return [geo.coordinates[0], geo.coordinates[1]];
-    }
-  }
-  // Fallback: explicit lat/lng columns
-  const lat = row.lat ?? row.latitude ?? row.y;
-  const lng = row.lng ?? row.longitude ?? row.lon ?? row.x;
-  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
-    return [Number(lng), Number(lat)];
-  }
-  return null;
-}
-
-/** Extract polygon geometry from a row */
-function extractPolygon(row: R): R | null {
-  for (const col of ['boundary', 'geom', 'geometry', 'the_geom', 'polygon', 'shape', 'hull', 'wkb_geometry']) {
-    const geo = parseGeometry(row[col]);
-    if (geo && (geo.type === 'Polygon' || geo.type === 'MultiPolygon' || geo.type === 'Feature' || geo.type === 'FeatureCollection')) {
-      return geo;
-    }
-  }
-  return null;
-}
-
-/** Build bbox rectangle GeoJSON as fallback when no real polygon available */
-function bboxToPolygon(c: Community): GeoJSONFC {
-  const { bbox_west: w, bbox_south: s, bbox_east: e, bbox_north: n } = c;
-  return {
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      geometry: { type: 'Polygon', coordinates: [[[w, n], [e, n], [e, s], [w, s], [w, n]]] },
-      properties: { name: c.community_name },
-    }],
-  };
 }
 
 export function SatellitePage() {
   const { colors, mode, toggle } = useTheme();
   const isDark = mode === 'dark';
 
-  const [communities, setCommunities] = useState<Community[]>(SEED_COMMUNITIES);
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [selected, setSelected] = useState<Community | null>(null);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
+  const [signatureAmenities, setSignatureAmenities] = useState<Amenity[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Select a community');
   const [filterCat, setFilterCat] = useState('all');
@@ -147,93 +104,44 @@ export function SatellitePage() {
   const [search, setSearch] = useState('');
   const [popupAmenity, setPopupAmenity] = useState<Amenity | null>(null);
   const [boundaryGeoJSON, setBoundaryGeoJSON] = useState<GeoJSONFC | null>(null);
+  const [rpcMeta, setRpcMeta] = useState<{ boundary_source: string; area_sqkm: number } | null>(null);
   const mapboxRef = useRef<MapRef>(null);
 
-  // Cache for all amenity rows from masterplan_gee_queue (proven data source)
-  const amenityCacheRef = useRef<Amenity[] | null>(null);
-
-  // ─── Load community list + amenities from proven data sources ───
+  /* ── CHANGE 5: Load overview community list from get_all_community_centroids RPC ── */
   useEffect(() => {
     (async () => {
       try {
-        const seedMap = new Map(SEED_COMMUNITIES.map(s => [s.community_key, s.amenity_count]));
-
-        // 1) Load community list from masterplan_images
-        const { data, error } = await bronze().from('masterplan_images')
-          .select('community_key, community_name, developer, image_url, bbox_west, bbox_south, bbox_east, bbox_north, source_confidence')
-          .order('community_name', { ascending: true });
+        const { data, error } = await sb.rpc('get_all_community_centroids');
         if (error) {
-          console.error('[Satellite] masterplan_images:', error.message);
+          console.error('[Satellite] get_all_community_centroids error:', error.message);
           return;
         }
-        if (!data?.length) return;
-
-        const comms: Community[] = data.map((d: R) => ({
+        if (!data?.length) {
+          console.warn('[Satellite] get_all_community_centroids returned empty');
+          return;
+        }
+        const comms: Community[] = (data as R[]).map((d) => ({
           community_key: d.community_key || '',
-          community_name: d.community_name || '',
-          developer: d.developer || '',
-          image_url: d.image_url || '',
-          source_confidence: d.source_confidence || 'MEDIUM',
-          bbox_west: Number(d.bbox_west), bbox_south: Number(d.bbox_south),
-          bbox_east: Number(d.bbox_east), bbox_north: Number(d.bbox_north),
-          amenity_count: seedMap.get(d.community_key) ?? 0,
+          display_name: d.display_name || d.community_key?.replace(/_/g, ' ') || '',
+          centroid_lnglat: Array.isArray(d.centroid_lnglat) ? [d.centroid_lnglat[0], d.centroid_lnglat[1]] as [number, number] : [0, 0] as [number, number],
+          bbox: Array.isArray(d.bbox) ? [d.bbox[0], d.bbox[1], d.bbox[2], d.bbox[3]] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+          area_sqkm: Number(d.area_sqkm) || 0,
         }));
+        console.log(`[Satellite] Loaded ${comms.length} communities from RPC`);
         setCommunities(comms);
-
-        // 2) Load amenities from bronze.masterplan_gee_queue (PROVEN data source used by useMapLayers)
-        const { data: geeData, error: geeErr } = await bronze().from('masterplan_gee_queue')
-          .select('plot_number, community_name, amenity_class, delivery_verdict, delivery_score, gee_bbox_west, gee_bbox_south, gee_bbox_east, gee_bbox_north')
-          .eq('gee_status', 'DONE');
-
-        if (geeErr) {
-          console.error('[Satellite] masterplan_gee_queue:', geeErr.message);
-          return;
-        }
-
-        if (geeData?.length) {
-          // Convert to Amenity format using bbox center as point location
-          const allAmenities: Amenity[] = geeData
-            .filter((r: R) => r.gee_bbox_west && r.gee_bbox_south && r.gee_bbox_east && r.gee_bbox_north)
-            .map((r: R, i: number) => ({
-              id: i,
-              name: String(r.plot_number || r.amenity_class || 'Unknown'),
-              amenity_type: String(r.amenity_class || '').toLowerCase(),
-              amenity_category: String(r.amenity_class || '').toLowerCase(),
-              is_operational: r.delivery_verdict === 'DELIVERED' || r.delivery_verdict === 'PARTIAL',
-              lat: (Number(r.gee_bbox_south) + Number(r.gee_bbox_north)) / 2,
-              lng: (Number(r.gee_bbox_west) + Number(r.gee_bbox_east)) / 2,
-            }));
-
-          amenityCacheRef.current = allAmenities;
-          console.log(`[Satellite] Loaded ${allAmenities.length} amenities from masterplan_gee_queue`);
-
-          // Count per community
-          const countMap = new Map<string, number>();
-          for (const com of comms) {
-            let count = 0;
-            for (const a of allAmenities) {
-              if (a.lng >= com.bbox_west && a.lng <= com.bbox_east
-                && a.lat >= com.bbox_south && a.lat <= com.bbox_north) {
-                count++;
-              }
-            }
-            if (count > 0) countMap.set(com.community_key, count);
-          }
-          setCommunities(prev => prev.map(c => ({
-            ...c,
-            amenity_count: countMap.get(c.community_key) ?? c.amenity_count,
-          })));
-        }
       } catch (e) {
-        console.error('[Satellite] Failed to load:', e);
+        console.error('[Satellite] Failed to load communities:', e);
       }
     })();
   }, []);
 
+  /* ── CHANGE 1+2+3: Load community detail via get_community_map_layer RPC ── */
   const loadCommunity = async (com: Community) => {
     setSelected(com);
     setAmenities([]);
+    setSignatureAmenities([]);
     setBoundaryGeoJSON(null);
+    setRpcMeta(null);
     setLoading(true);
     setFilterCat('all');
     setFilterOp('all');
@@ -241,89 +149,100 @@ export function SatellitePage() {
     setStatus('Loading...');
 
     const rpcKey = toRpcKey(com.community_key);
-    let rpcWorked = false;
 
-    // ── Primary: use get_community_map_layer RPC (returns boundary + amenities + centroid) ──
     try {
       const { data: rpcData, error: rpcErr } = await sb.rpc('get_community_map_layer', {
         p_community_key: rpcKey,
       });
 
-      if (!rpcErr && rpcData) {
-        const d = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as R;
-        console.log('[Satellite] RPC get_community_map_layer keys:', Object.keys(d));
-
-        // Boundary polygon
-        const boundary = d.boundary ?? d.boundary_geojson;
-        if (boundary) {
-          const geo = typeof boundary === 'string' ? JSON.parse(boundary) : boundary;
-          if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
-            setBoundaryGeoJSON({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', geometry: geo, properties: { name: com.community_name } }],
-            });
-          } else if (geo.type === 'FeatureCollection') {
-            setBoundaryGeoJSON(geo);
-          } else if (geo.type === 'Feature') {
-            setBoundaryGeoJSON({ type: 'FeatureCollection', features: [geo] });
-          }
-        }
-
-        // Amenity pins from RPC
-        const rpcAmenities = d.amenities;
-        if (Array.isArray(rpcAmenities) && rpcAmenities.length > 0) {
-          const pins: Amenity[] = rpcAmenities.map((a: R, i: number) => {
-            // lnglat could be [lng, lat] array or {lng, lat} object
-            let lat = 0, lng = 0;
-            if (Array.isArray(a.lnglat)) {
-              [lng, lat] = a.lnglat;
-            } else if (a.lnglat && typeof a.lnglat === 'object') {
-              lng = a.lnglat.lng ?? a.lnglat[0] ?? 0;
-              lat = a.lnglat.lat ?? a.lnglat[1] ?? 0;
-            } else if (a.lng != null && a.lat != null) {
-              lng = Number(a.lng); lat = Number(a.lat);
-            } else if (a.longitude != null && a.latitude != null) {
-              lng = Number(a.longitude); lat = Number(a.latitude);
-            }
-            return {
-              id: a.id ?? i,
-              name: a.name || a.amenity_name || a.plot_number || 'Unknown',
-              amenity_type: String(a.amenity_type || a.amenity_class || a.type || '').toLowerCase(),
-              amenity_category: String(a.amenity_category || a.category || '').toLowerCase(),
-              is_operational: a.is_operational != null ? Boolean(a.is_operational) : (a.delivery_verdict === 'DELIVERED' || a.delivery_verdict === 'PARTIAL'),
-              lat, lng,
-            };
-          }).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
-          setAmenities(pins);
-          setStatus(`${pins.length} amenities · ${com.community_name}`);
-          rpcWorked = true;
-          console.log(`[Satellite] RPC returned ${pins.length} amenity pins`);
-        }
-      } else if (rpcErr) {
-        console.warn('[Satellite] RPC get_community_map_layer error:', rpcErr.message);
+      if (rpcErr) {
+        console.error('[Satellite] RPC error:', rpcErr.message);
+        setStatus(`Error loading ${com.display_name}`);
+        setLoading(false);
+        return;
       }
+
+      if (!rpcData) {
+        console.warn('[Satellite] RPC returned null for', rpcKey);
+        setStatus(`No data for ${com.display_name}`);
+        setLoading(false);
+        return;
+      }
+
+      const d = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as RpcLayerData;
+      console.log('[Satellite] RPC response keys:', Object.keys(d));
+
+      // Store metadata
+      setRpcMeta({
+        boundary_source: d.boundary_source || 'unknown',
+        area_sqkm: d.area_sqkm || 0,
+      });
+
+      // CHANGE 2: Boundary polygon from RPC (real GeoJSON, not bbox)
+      if (d.boundary) {
+        const geo = typeof d.boundary === 'string' ? JSON.parse(d.boundary) : d.boundary;
+        if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
+          setBoundaryGeoJSON({
+            type: 'FeatureCollection',
+            features: [{ type: 'Feature', geometry: geo, properties: { name: com.display_name } }],
+          });
+        } else if (geo.type === 'FeatureCollection') {
+          setBoundaryGeoJSON(geo);
+        } else if (geo.type === 'Feature') {
+          setBoundaryGeoJSON({ type: 'FeatureCollection', features: [geo] });
+        }
+      }
+
+      // Fit map to RPC bbox
+      if (d.bbox && Array.isArray(d.bbox) && d.bbox.length === 4) {
+        const [w, s, e, n] = d.bbox;
+        mapboxRef.current?.fitBounds([[w, s], [e, n]], { padding: 60, duration: 1500 });
+      }
+
+      // CHANGE 3: Parse amenities with new fields
+      const mapAmenity = (a: R, i: number): Amenity => {
+        let lat = 0, lng = 0;
+        if (Array.isArray(a.lnglat)) {
+          [lng, lat] = a.lnglat;
+        } else if (a.lnglat && typeof a.lnglat === 'object') {
+          lng = a.lnglat.lng ?? a.lnglat[0] ?? 0;
+          lat = a.lnglat.lat ?? a.lnglat[1] ?? 0;
+        } else if (a.lng != null && a.lat != null) {
+          lng = Number(a.lng); lat = Number(a.lat);
+        }
+        return {
+          id: a.id ?? i,
+          name: a.name || a.amenity_name || 'Unknown',
+          amenity_type: String(a.amenity_type || a.type || '').toLowerCase(),
+          amenity_category: String(a.amenity_category || a.category || '').toLowerCase(),
+          is_operational: a.is_operational != null ? Boolean(a.is_operational) : true,
+          is_signature: Boolean(a.is_signature),
+          tagline: a.tagline || '',
+          lifecycle_stage: a.lifecycle_stage || 'operational',
+          source: a.source || '',
+          rating: a.rating != null ? Number(a.rating) : null,
+          lat, lng,
+        };
+      };
+
+      const pins = (d.amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
+      setAmenities(pins);
+
+      // CHANGE 4: Signature amenities
+      const sigs = (d.signature_amenities || []).map(mapAmenity).filter((a: Amenity) => a.lat !== 0 && a.lng !== 0);
+      setSignatureAmenities(sigs);
+
+      setStatus(`${pins.length} amenities · ${com.display_name}`);
+      console.log(`[Satellite] ${pins.length} pins, ${sigs.length} signature amenities`);
     } catch (e) {
-      console.warn('[Satellite] RPC failed:', e);
-    }
-
-    // ── Fallback: use cached masterplan_gee_queue data for amenity pins ──
-    if (!rpcWorked) {
-      const cache = amenityCacheRef.current;
-      if (cache?.length) {
-        const inBbox = cache.filter(a =>
-          a.lng >= com.bbox_west && a.lng <= com.bbox_east
-          && a.lat >= com.bbox_south && a.lat <= com.bbox_north
-        );
-        setAmenities(inBbox);
-        setStatus(`${inBbox.length} amenities · ${com.community_name}`);
-      } else {
-        setStatus(`${com.amenity_count} amenities (seed) · ${com.community_name}`);
-      }
+      console.error('[Satellite] loadCommunity failed:', e);
+      setStatus(`Error loading ${com.display_name}`);
     }
 
     setLoading(false);
   };
 
+  /* ── Derived data ── */
   const categories = useMemo(() =>
     [...new Set(amenities.map(a => a.amenity_type || a.amenity_category).filter(Boolean))].sort(),
     [amenities]
@@ -342,8 +261,8 @@ export function SatellitePage() {
 
   const filteredComs = useMemo(() =>
     communities.filter(c =>
-      c.community_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.developer?.toLowerCase().includes(search.toLowerCase())
+      c.display_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.community_key.toLowerCase().includes(search.toLowerCase())
     ),
     [communities, search]
   );
@@ -356,27 +275,19 @@ export function SatellitePage() {
     [amenities, categories]
   );
 
-  // Use real boundary polygon if available, else bbox rectangle
-  const polygonGeoJSON = useMemo(() => {
-    if (boundaryGeoJSON) return boundaryGeoJSON;
-    if (selected) return bboxToPolygon(selected);
-    return null;
-  }, [boundaryGeoJSON, selected]);
-
   // Fly mapbox to community bounds when selected
   const flyToSelected = useCallback(() => {
     if (!selected || !mapboxRef.current) return;
-    mapboxRef.current.fitBounds(
-      [[selected.bbox_west, selected.bbox_south], [selected.bbox_east, selected.bbox_north]],
-      { padding: 60, duration: 1500 }
-    );
+    const [w, s, e, n] = selected.bbox;
+    if (w === 0 && s === 0) return;
+    mapboxRef.current.fitBounds([[w, s], [e, n]], { padding: 60, duration: 1500 });
   }, [selected]);
 
   useEffect(() => {
     flyToSelected();
   }, [selected, flyToSelected]);
 
-  // Theme-adaptive colors
+  /* ── Theme-adaptive colors ── */
   const bg = isDark ? '#07080d' : '#f5f7fa';
   const panelBg = isDark ? '#060c15' : '#ffffff';
   const headerBg = isDark ? '#06101c' : '#f0f2f5';
@@ -388,6 +299,7 @@ export function SatellitePage() {
   const accentBlue = isDark ? '#00d4ff' : '#0284c7';
   const dotBg = isDark ? '#091422' : '#f0f4f8';
   const overlayBg = isDark ? '#07080da8' : '#ffffffd0';
+  const goldColor = '#C9A84C';
 
   const fillLayer: FillLayer = {
     id: 'boundary-fill', type: 'fill', source: 'community-boundary',
@@ -395,15 +307,29 @@ export function SatellitePage() {
   };
   const lineLayer: LineLayer = {
     id: 'boundary-line', type: 'line', source: 'community-boundary',
-    paint: {
-      'line-color': accentBlue, 'line-width': 2.5,
-      'line-opacity': 0.85,
-    },
+    paint: { 'line-color': accentBlue, 'line-width': 2.5, 'line-opacity': 0.85 },
   };
 
   return (
     <div style={{ fontFamily: "'JetBrains Mono','Courier New',monospace", background: bg, color: textSecondary, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap'); @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} .sat-crow{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid ${rowBorder};transition:background .12s} .sat-crow:hover,.sat-crow.sel{background:${isDark ? '#0b1728' : '#f0f6ff'}} .sat-chip{background:transparent;border:1px solid ${borderC};color:${textDim};font-family:inherit;font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;white-space:nowrap} .sat-chip.on{background:${accentBlue}12;border-color:${accentBlue};color:${accentBlue}} .sat-chip:hover:not(.on){border-color:${isDark ? '#243a52' : '#c0c8d0'};color:${isDark ? '#5a7a9a' : '#475569'}} .mapboxgl-popup-content{background:${isDark ? '#0a1628' : '#fff'}!important;border:1px solid ${borderC}!important;border-radius:6px!important;box-shadow:0 8px 30px ${isDark ? '#000a' : '#0002'}!important;padding:10px 14px!important}`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap');
+        @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .sat-crow{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid ${rowBorder};transition:background .12s}
+        .sat-crow:hover,.sat-crow.sel{background:${isDark ? '#0b1728' : '#f0f6ff'}}
+        .sat-chip{background:transparent;border:1px solid ${borderC};color:${textDim};font-family:inherit;font-size:8px;letter-spacing:1px;padding:3px 9px;border-radius:2px;cursor:pointer;transition:all .15s;white-space:nowrap}
+        .sat-chip.on{background:${accentBlue}12;border-color:${accentBlue};color:${accentBlue}}
+        .sat-chip:hover:not(.on){border-color:${isDark ? '#243a52' : '#c0c8d0'};color:${isDark ? '#5a7a9a' : '#475569'}}
+        .mapboxgl-popup-content{background:${isDark ? '#0a1628' : '#fff'}!important;border:1px solid ${borderC}!important;border-radius:6px!important;box-shadow:0 8px 30px ${isDark ? '#000a' : '#0002'}!important;padding:10px 14px!important}
+        .amenity-pin{width:12px;height:12px;border-radius:50%;border:2px solid #fff;cursor:pointer;transition:transform .15s}
+        .amenity-pin:hover{transform:scale(1.4)}
+        .amenity-pin--signature{width:18px;height:18px;border:2px solid ${goldColor};box-shadow:0 0 12px ${goldColor}80,0 0 4px ${goldColor}40}
+        .amenity-pin--planned{width:9px;height:9px;border:2px dashed #888;opacity:0.6}
+        .sig-strip{display:flex;gap:10px;overflow-x:auto;padding:8px 12px;scrollbar-width:none}
+        .sig-strip::-webkit-scrollbar{display:none}
+        .sig-card{flex-shrink:0;width:140px;background:${isDark ? '#0a1628' : '#f8f9fb'};border:1px solid ${isDark ? '#1a2a3e' : '#e0e4ea'};border-radius:6px;padding:8px 10px;cursor:pointer;transition:border-color .2s}
+        .sig-card:hover{border-color:${goldColor}}
+      `}</style>
 
       {/* Header */}
       <div style={{ background: headerBg, borderBottom: `1px solid ${borderC}`, height: 46, display: 'flex', alignItems: 'center', padding: '0 18px', gap: 14, flexShrink: 0 }}>
@@ -448,53 +374,45 @@ export function SatellitePage() {
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 12px', borderBottom: `1px solid ${rowBorder}` }}>
-            <span style={{ fontSize: 8, color: textDim, letterSpacing: 1 }}>WITH GIS DATA</span>
-            <span style={{ fontSize: 8, color: accentBlue }}>{communities.filter(c => c.amenity_count > 0).length}</span>
+            <span style={{ fontSize: 8, color: textDim, letterSpacing: 1 }}>COMMUNITIES</span>
+            <span style={{ fontSize: 8, color: accentBlue }}>{communities.length}</span>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {filteredComs.map(com => {
-              const has = com.amenity_count > 0;
               const sel = selected?.community_key === com.community_key;
               return (
-                <div key={com.community_key} className={`sat-crow${sel ? ' sel' : ''}`} onClick={() => loadCommunity(com)} style={{ opacity: has ? 1 : 0.4 }}>
-                  <div style={{ width: 42, height: 30, borderRadius: 2, overflow: 'hidden', flexShrink: 0, border: `1px solid ${sel ? accentBlue + '40' : rowBorder}`, background: dotBg, position: 'relative' }}>
-                    <img src={com.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
-                    {sel && <div style={{ position: 'absolute', inset: 0, border: `2px solid ${accentBlue}60`, borderRadius: 2 }} />}
-                  </div>
+                <div key={com.community_key} className={`sat-crow${sel ? ' sel' : ''}`} onClick={() => loadCommunity(com)}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, color: sel ? accentBlue : has ? textPrimary : textDim, fontWeight: sel ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {com.community_name}
+                    <div style={{ fontSize: 10, color: sel ? accentBlue : textPrimary, fontWeight: sel ? 600 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {com.display_name}
                     </div>
-                    <div style={{ fontSize: 7.5, color: textDim, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {com.developer?.split(' ').slice(0, 3).join(' ')}
+                    <div style={{ fontSize: 7.5, color: textDim, marginTop: 1 }}>
+                      {com.area_sqkm > 0 ? `${com.area_sqkm.toFixed(1)} km²` : ''}
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 14, fontWeight: 700, color: has ? '#10b981' : borderC }}>{com.amenity_count}</div>
-                    <div style={{ fontSize: 6.5, color: borderC, letterSpacing: 0.5 }}>AMENS</div>
                   </div>
                 </div>
               );
             })}
           </div>
+          {/* CHANGE 6: Footer with dynamic source label */}
           <div style={{ padding: '8px 12px', borderTop: `1px solid ${rowBorder}`, fontSize: 7.5, color: textDim, lineHeight: 1.7 }}>
-            <div>SOURCE · layers.communities + amenities</div>
+            <div>SOURCE · {rpcMeta ? (SOURCE_LABELS[rpcMeta.boundary_source] || rpcMeta.boundary_source) : 'get_all_community_centroids'}</div>
             <div>MAP · Mapbox Satellite</div>
-            <div>BOUNDS · georectified bbox per community</div>
+            {rpcMeta && rpcMeta.area_sqkm > 0 && <div>AREA · {rpcMeta.area_sqkm.toFixed(2)} km²</div>}
           </div>
         </div>
 
-        {/* Main panel — Satellite map only */}
+        {/* Main panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {!selected ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, opacity: 0.5 }}>
               <div style={{ fontSize: 56, lineHeight: 1 }}>{'⬡'}</div>
               <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 20, fontWeight: 800, color: textDim, letterSpacing: 4 }}>SELECT A COMMUNITY</div>
-              <div style={{ fontSize: 10, color: textDim }}>{communities.filter(c => c.amenity_count > 0).length} communities with live GIS data ready</div>
+              <div style={{ fontSize: 10, color: textDim }}>{communities.length} communities available</div>
             </div>
           ) : (
             <>
-              {/* Filter bar */}
+              {/* CHANGE 7: Filter bar with AMENITY_LABELS */}
               <div style={{ padding: '6px 12px', borderBottom: `1px solid ${rowBorder}`, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', background: panelBg, flexShrink: 0 }}>
                 <span style={{ fontSize: 8, color: textDim, letterSpacing: 1, flexShrink: 0 }}>STATUS:</span>
                 {([['all', 'ALL'], ['op', '● OPEN'], ['not', '○ PENDING']] as [string, string][]).map(([v, l]) => (
@@ -511,12 +429,46 @@ export function SatellitePage() {
                     <button key={cat} className={`sat-chip${filterCat === cat ? ' on' : ''}`}
                       style={filterCat === cat ? { borderColor: c, color: c, background: `${c}12` } : {}}
                       onClick={() => setFilterCat(filterCat === cat ? 'all' : cat)}>
-                      {cat} {catCounts[cat] || ''}
+                      {AMENITY_LABELS[cat] || cat} {catCounts[cat] || ''}
                     </button>
                   );
                 })}
                 <span style={{ marginLeft: 'auto', fontSize: 9, color: textDim, flexShrink: 0 }}>{visible.length} pins</span>
               </div>
+
+              {/* CHANGE 4: Signature amenities horizontal strip */}
+              {signatureAmenities.length > 0 && (
+                <div style={{ borderBottom: `1px solid ${rowBorder}`, background: panelBg, flexShrink: 0 }}>
+                  <div style={{ padding: '4px 12px 0', fontSize: 8, color: goldColor, letterSpacing: 1 }}>★ SIGNATURE AMENITIES</div>
+                  <div className="sig-strip">
+                    {signatureAmenities.map(sig => {
+                      const emoji = SIG_EMOJI[sig.amenity_type] || SIG_EMOJI.default;
+                      return (
+                        <div key={sig.id} className="sig-card" onClick={() => {
+                          setPopupAmenity(sig);
+                          mapboxRef.current?.flyTo({ center: [sig.lng, sig.lat], zoom: 17, duration: 800 });
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                            <span style={{ fontSize: 14 }}>{emoji}</span>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sig.name}</span>
+                          </div>
+                          {sig.tagline && <div style={{ fontSize: 7.5, color: textSecondary, lineHeight: 1.3, marginBottom: 3 }}>{sig.tagline}</div>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 7 }}>
+                            <span style={{ color: CAT_COLORS[sig.amenity_type] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              {AMENITY_LABELS[sig.amenity_type] || sig.amenity_type}
+                            </span>
+                            {sig.rating != null && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 2, color: goldColor }}>
+                                <Star size={8} fill={goldColor} /> {sig.rating.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Satellite map */}
               <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -532,36 +484,38 @@ export function SatellitePage() {
                   mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
                   mapStyle={isDark ? 'mapbox://styles/mapbox/satellite-streets-v12' : 'mapbox://styles/mapbox/satellite-v9'}
                   initialViewState={{
-                    longitude: (selected.bbox_west + selected.bbox_east) / 2,
-                    latitude: (selected.bbox_south + selected.bbox_north) / 2,
+                    longitude: selected.centroid_lnglat[0] || 55.27,
+                    latitude: selected.centroid_lnglat[1] || 25.07,
                     zoom: 14,
                   }}
                   style={{ width: '100%', height: '100%' }}
                   onLoad={flyToSelected}
                 >
                   {/* Community boundary polygon */}
-                  {polygonGeoJSON && (
-                    <Source id="community-boundary" type="geojson" data={polygonGeoJSON}>
+                  {boundaryGeoJSON && (
+                    <Source id="community-boundary" type="geojson" data={boundaryGeoJSON}>
                       <Layer {...fillLayer} />
                       <Layer {...lineLayer} />
                     </Source>
                   )}
 
-                  {/* Amenity markers */}
+                  {/* CHANGE 3: Amenity markers with signature/planned styles */}
                   {visible.map(a => {
                     const cat = a.amenity_type || a.amenity_category || 'default';
                     const color = CAT_COLORS[cat] || CAT_COLORS.default;
-                    const dotColor = a.is_operational ? color : '#4a6a8a';
+                    const isPlanned = a.lifecycle_stage === 'planned';
+                    const isSig = a.is_signature;
+
+                    const pinStyle: React.CSSProperties = isSig
+                      ? { width: 18, height: 18, borderRadius: '50%', background: color, border: `2px solid ${goldColor}`, boxShadow: `0 0 12px ${goldColor}80, 0 0 4px ${goldColor}40`, cursor: 'pointer', transition: 'transform .15s' }
+                      : isPlanned
+                        ? { width: 9, height: 9, borderRadius: '50%', background: 'transparent', border: `2px dashed ${color}80`, opacity: 0.6, cursor: 'pointer', transition: 'transform .15s' }
+                        : { width: 12, height: 12, borderRadius: '50%', background: a.is_operational ? color : '#4a6a8a', border: '2px solid #fff', boxShadow: `0 0 8px ${color}cc, 0 1px 4px #0008`, cursor: 'pointer', transition: 'transform .15s' };
+
                     return (
                       <Marker key={a.id} longitude={a.lng} latitude={a.lat} anchor="center"
                         onClick={e => { e.originalEvent.stopPropagation(); setPopupAmenity(a); }}>
-                        <div style={{
-                          width: a.is_operational ? 14 : 9, height: a.is_operational ? 14 : 9,
-                          borderRadius: '50%', background: dotColor,
-                          border: `2px solid ${a.is_operational ? '#fff' : '#555'}`,
-                          boxShadow: `0 0 8px ${dotColor}cc, 0 1px 4px #0008`,
-                          cursor: 'pointer', transition: 'transform .15s',
-                        }}
+                        <div style={pinStyle}
                           onMouseEnter={e => { (e.target as HTMLElement).style.transform = 'scale(1.4)'; }}
                           onMouseLeave={e => { (e.target as HTMLElement).style.transform = 'scale(1)'; }}
                         />
@@ -569,19 +523,38 @@ export function SatellitePage() {
                     );
                   })}
 
-                  {/* Popup */}
+                  {/* Popup with extended fields */}
                   {popupAmenity && (
                     <Popup longitude={popupAmenity.lng} latitude={popupAmenity.lat} anchor="bottom" offset={14}
                       onClose={() => setPopupAmenity(null)} closeButton={false}>
-                      <div style={{ minWidth: 160 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: textPrimary, marginBottom: 5 }}>{popupAmenity.name}</div>
-                        <div style={{ display: 'flex', gap: 10, fontSize: 8 }}>
+                      <div style={{ minWidth: 180 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: textPrimary }}>{popupAmenity.name}</div>
+                          {popupAmenity.is_signature && <span style={{ fontSize: 7, background: `${goldColor}20`, color: goldColor, padding: '1px 5px', borderRadius: 2, letterSpacing: 0.5 }}>★ SIGNATURE</span>}
+                        </div>
+                        {popupAmenity.tagline && <div style={{ fontSize: 8.5, color: textSecondary, marginBottom: 5, lineHeight: 1.4 }}>{popupAmenity.tagline}</div>}
+                        <div style={{ display: 'flex', gap: 8, fontSize: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                           <span style={{ color: CAT_COLORS[popupAmenity.amenity_type || popupAmenity.amenity_category] || textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            {popupAmenity.amenity_type || popupAmenity.amenity_category}
+                            {AMENITY_LABELS[popupAmenity.amenity_type] || popupAmenity.amenity_type || popupAmenity.amenity_category}
                           </span>
                           <span style={{ color: popupAmenity.is_operational ? '#10b981' : '#ef4444' }}>
                             {popupAmenity.is_operational ? '● Operational' : '○ Pending'}
                           </span>
+                          {popupAmenity.lifecycle_stage && popupAmenity.lifecycle_stage !== 'operational' && (
+                            <span style={{ color: textDim, fontStyle: 'italic' }}>{popupAmenity.lifecycle_stage}</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, fontSize: 7, alignItems: 'center' }}>
+                          {popupAmenity.rating != null && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 2, color: goldColor }}>
+                              <Star size={8} fill={goldColor} /> {popupAmenity.rating.toFixed(1)}
+                            </span>
+                          )}
+                          {popupAmenity.source && (
+                            <span style={{ background: isDark ? '#1a2a3e' : '#e8ecf0', padding: '1px 5px', borderRadius: 2, color: textDim }}>
+                              {SOURCE_LABELS[popupAmenity.source] || popupAmenity.source}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 7, color: textDim, marginTop: 4 }}>
                           {popupAmenity.lat.toFixed(5)}°N, {popupAmenity.lng.toFixed(5)}°E
@@ -597,28 +570,30 @@ export function SatellitePage() {
                     fontFamily: "'Barlow Condensed',sans-serif", fontSize: 24, fontWeight: 800, color: '#fff',
                     letterSpacing: 2, textShadow: '0 2px 12px #000, 0 0 40px #00000090',
                   }}>
-                    {selected.community_name.toUpperCase()}
+                    {selected.display_name.toUpperCase()}
                   </div>
                   <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,.55)', letterSpacing: 1, marginTop: 2, textShadow: '0 1px 6px #000' }}>
-                    {selected.developer} · {selected.source_confidence} CONFIDENCE
+                    {rpcMeta ? `${SOURCE_LABELS[rpcMeta.boundary_source] || rpcMeta.boundary_source} · ${rpcMeta.area_sqkm.toFixed(1)} km²` : ''}
                   </div>
                 </div>
 
                 {/* Geo bounds */}
-                <div style={{
-                  position: 'absolute', bottom: 10, left: 12, background: overlayBg,
-                  border: `1px solid ${borderC}30`, borderRadius: 3, padding: '4px 8px', backdropFilter: 'blur(8px)', pointerEvents: 'none', zIndex: 10,
-                }}>
-                  <div style={{ fontSize: 7, color: isDark ? '#8ab' : textDim }}>
-                    {selected.bbox_north.toFixed(4)}°N–{selected.bbox_south.toFixed(4)}°N · {selected.bbox_west.toFixed(4)}°E–{selected.bbox_east.toFixed(4)}°E
+                {selected.bbox[0] !== 0 && (
+                  <div style={{
+                    position: 'absolute', bottom: 10, left: 12, background: overlayBg,
+                    border: `1px solid ${borderC}30`, borderRadius: 3, padding: '4px 8px', backdropFilter: 'blur(8px)', pointerEvents: 'none', zIndex: 10,
+                  }}>
+                    <div style={{ fontSize: 7, color: isDark ? '#8ab' : textDim }}>
+                      {selected.bbox[3].toFixed(4)}°N–{selected.bbox[1].toFixed(4)}°N · {selected.bbox[0].toFixed(4)}°E–{selected.bbox[2].toFixed(4)}°E
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Legend */}
                 {categories.length > 0 && (
                   <div style={{
                     position: 'absolute', bottom: 10, right: 12, background: overlayBg,
-                    border: `1px solid ${borderC}50`, borderRadius: 4, padding: '8px 10px', backdropFilter: 'blur(8px)', maxWidth: 170, zIndex: 10,
+                    border: `1px solid ${borderC}50`, borderRadius: 4, padding: '8px 10px', backdropFilter: 'blur(8px)', maxWidth: 180, zIndex: 10,
                   }}>
                     <div style={{ fontSize: 7.5, color: isDark ? '#8ab' : textDim, letterSpacing: 1, marginBottom: 5 }}>CATEGORIES</div>
                     {categories.slice(0, 10).map(cat => {
@@ -627,7 +602,7 @@ export function SatellitePage() {
                         <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3, cursor: 'pointer' }}
                           onClick={() => setFilterCat(filterCat === cat ? 'all' : cat)}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: c, boxShadow: `0 0 4px ${c}80`, flexShrink: 0 }} />
-                          <span style={{ fontSize: 7.5, color: filterCat === cat ? c : textSecondary, transition: 'color .15s' }}>{cat}</span>
+                          <span style={{ fontSize: 7.5, color: filterCat === cat ? c : textSecondary, transition: 'color .15s' }}>{AMENITY_LABELS[cat] || cat}</span>
                           <span style={{ fontSize: 7.5, color: textDim, marginLeft: 'auto' }}>{catCounts[cat] || 0}</span>
                         </div>
                       );
