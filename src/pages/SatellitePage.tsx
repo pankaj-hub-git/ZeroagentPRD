@@ -64,39 +64,96 @@ interface RpcLayerData {
 
 /* ── Label maps ── */
 const AMENITY_LABELS: Record<string, string> = {
-  // OSM types that appear in filter
-  hospital: 'Clinic / Hospital', mall: 'Supermarket / Mall',
-  sports_club: 'Gym / Sports Club', other: 'Other', recreation: 'Recreation',
-  // Masterplan types
+  // HEALTHCARE (OSM + masterplan) — split from old catch-all 'hospital'
+  pharmacy: 'Pharmacy', health_clinic: 'Medical Centre', clinic: 'Clinic',
+  hospital: 'Hospital', healthcare: 'Healthcare', health_facility: 'Health Facility',
+
+  // HOSPITALITY (masterplan only — completely separate from healthcare)
+  hotel_cluster: 'Hotel Zone', business_hotel: 'Business Hotel',
+  lifestyle_hotel: 'Lifestyle Hotel', boutique_hotel: 'Boutique Hotel',
+  luxury_hotel: '5-Star Hotel', resort_hotel: 'Resort', eco_hotel: 'Eco Hotel',
+  theme_hotel: 'Theme Hotel', medical_hotel: 'Medical Hotel',
+  waterfront_hotel: 'Waterfront Hotel', golf_hotel: 'Golf Clubhouse',
+
+  // WATER
   crystal_lagoon: 'Crystal Lagoon', ornamental_lake: 'Lagoon / Lake',
-  waterpark_lagoon: 'Wave Pool', community_park: 'Community Park',
-  forest_park: 'Forest Park', golf_park: 'Golf Course', golf_course: 'Golf Course',
-  community_facility: 'Schools & Mosque', retail_village: 'Retail Village',
-  leisure_facility: 'Leisure', hotel_cluster: 'Hotel Zone',
-  // Common types
-  park: 'Park / Garden', restaurant: 'Restaurant', retail: 'Retail / Mall',
-  school: 'School', mosque: 'Mosque', gym: 'Gym / Fitness', clinic: 'Clinic',
-  supermarket: 'Supermarket', transport: 'Transport',
-  leisure: 'Leisure', entertainment: 'Entertainment',
-  promenade: 'Promenade / Walk', lagoon: 'Lagoon / Water', pool: 'Pool',
-  playground: 'Playground', nursery: 'Nursery', pharmacy: 'Pharmacy',
-  community_centre: 'Community Centre', dog_park: 'Dog Park',
+  waterpark_lagoon: 'Wave Pool', waterpark_attraction: 'Surf & Waterpark',
+  waterfront_lagoon: 'Lagoon Waterfront', waterfront_marina: 'Marina', marina: 'Marina',
+  canal_waterfront: 'Canal Waterfront', creek_waterfront: 'Creek Waterfront',
+  waterfront: 'Water Feature', waterfront_park: 'Waterfront Park',
+  thematic_lake: 'Themed Lake', ecology_water: 'Ecology Pond',
+  golf_lake: 'Golf Lake', urban_water_feature: 'Water Feature',
+  lagoon_beach_park: 'Lagoon Beach', beach_park: 'Beach Park', beach_club: 'Beach Club',
+  island_park: 'Island Park',
+
+  // PARKS & GREEN
+  community_park: 'Community Park', mega_park: 'Major Park', urban_park: 'Urban Park',
+  village_park: 'Village Park', zen_park: 'Zen Garden', botanical_park: 'Botanical Garden',
+  canal_park: 'Canal Park', campus_green: 'Campus Green', forest_park: 'Forest Park',
+  forest_reserve: 'Forest Reserve', wellness_park: 'Wellness Garden',
+  sports_park: 'Sports Park', polo_park: 'Polo & Park', motorsport_park: 'Motorsport Park',
+  theme_park_grounds: 'Theme Park', themed_park: 'Themed Park',
+  park: 'Park / Garden',
+
+  // GOLF
+  golf_park: 'Golf Park', golf_course: 'Golf Course',
+
+  // SPORTS & LEISURE
+  sports_leisure: 'Sports & Wellness', sports_village: 'Sports Village',
+  sports_club: 'Gym / Sports Club', leisure_facility: 'Leisure',
+  signature_leisure: 'Signature Attraction', motorsport_attraction: 'Motorsport',
+  eco_leisure: 'Eco Leisure', wellness_facility: 'Wellness Centre',
+  eco_facility: 'Eco Facility', gym: 'Gym / Fitness',
   sports_court: 'Sports Court', cycling_track: 'Cycling Track',
-  mega_park: 'Mega Park', urban_park: 'Urban Park', village_park: 'Village Park',
-  zen_park: 'Zen Park', botanical_park: 'Botanical Park', canal_park: 'Canal Park',
-  wellness_park: 'Wellness Park', sports_park: 'Sports Park',
-  beach_park: 'Beach Park', beach_club: 'Beach Club',
-  retail_mall: 'Retail Mall', lifestyle_retail: 'Lifestyle Retail',
-  entertainment_facility: 'Entertainment', theme_park: 'Theme Park',
-  sports_leisure: 'Sports / Leisure', sports_village: 'Sports Village',
-  boutique_hotel: 'Boutique Hotel', resort_hotel: 'Resort Hotel', luxury_hotel: 'Luxury Hotel',
-  medical_facility: 'Medical Facility', healthcare: 'Healthcare',
-  business_facility: 'Business Facility',
+
+  // ENTERTAINMENT
+  entertainment_facility: 'Entertainment', entertainment: 'Entertainment',
+  theme_park: 'Theme Park', cultural_facility: 'Arts & Culture',
+
+  // COMMUNITY
+  community_facility: 'Schools & Mosque', education: 'School',
+  education_facility: 'Education Campus', business_facility: 'Business Centre',
+  medical_facility: 'Healthcare Campus', school: 'School', mosque: 'Mosque',
+  community_centre: 'Community Centre',
+
+  // RETAIL
+  mall: 'Mall / Supermarket', retail: 'Retail', retail_mall: 'Shopping Mall',
+  retail_village: 'Retail Village', retail_strip: 'Retail Strip',
+  retail_promenade: 'Retail Promenade', retail_beach: 'Beach Retail',
+  lifestyle_retail: 'Lifestyle Retail', luxury_retail: 'Luxury Retail',
+  community_retail: 'Community Retail', town_centre_retail: 'Town Centre',
+  boulevard_retail: 'Boulevard Retail', podium_retail: 'Podium Retail',
+  trade_retail: 'Trade & Wholesale', wellness_retail: 'Wellness Retail',
+  themed_retail: 'Themed Retail', supermarket: 'Supermarket',
+
+  // INFRASTRUCTURE
+  infrastructure: 'Transport', transport: 'Transport',
+
+  // OTHER
+  recreation: 'Recreation', other: 'Other', business: 'Business',
+  restaurant: 'Restaurant', promenade: 'Promenade / Walk',
+  lagoon: 'Lagoon / Water', pool: 'Pool', playground: 'Playground',
+  nursery: 'Nursery', dog_park: 'Dog Park', leisure: 'Leisure',
+};
+
+/** Display labels for amenity_category (the broader grouping) */
+const CATEGORY_LABELS: Record<string, string> = {
+  healthcare: 'Healthcare', hospitality: 'Hotels & Resorts',
+  green_space: 'Parks & Green', water_body: 'Water Features',
+  leisure_facility: 'Leisure & Sports', retail_commercial: 'Retail',
+  community_facility: 'Community', retail: 'Shops',
+  recreation: 'Recreation', services: 'Services',
+  infrastructure: 'Transport',
 };
 
 /** Get human-readable label for amenity type, with underscore→space fallback */
 function getAmenityLabel(type: string): string {
   return AMENITY_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
+/** Get human-readable label for amenity category */
+function getCategoryLabel(cat: string): string {
+  return CATEGORY_LABELS[cat] ?? cat.replace(/_/g, ' ');
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -114,19 +171,38 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const SIG_EMOJI: Record<string, string> = {
+  // Healthcare
+  pharmacy: '💊', health_clinic: '🏥', clinic: '🩺',
+  hospital: '🏥', healthcare: '🏥', health_facility: '🏥',
+  // Hospitality
+  hotel_cluster: '🏨', business_hotel: '🏨', lifestyle_hotel: '🏨',
+  boutique_hotel: '🏨', luxury_hotel: '🏨', resort_hotel: '🏖',
+  eco_hotel: '🌿', theme_hotel: '🎠', medical_hotel: '🏥',
+  waterfront_hotel: '⚓', golf_hotel: '⛳',
+  // Other
   park: '🌳', restaurant: '🍽️', retail: '🛍️', school: '🏫',
-  mosque: '🕌', gym: '💪', clinic: '🏥', supermarket: '🛒',
-  hospital: '🏥', transport: '🚇', leisure: '🎡', entertainment: '🎭',
+  mosque: '🕌', gym: '💪', supermarket: '🛒',
+  transport: '🚇', leisure: '🎡', entertainment: '🎭',
   recreation: '⛳', promenade: '🚶', lagoon: '🌊', pool: '🏊',
-  playground: '🛝', default: '📍',
+  playground: '🛝', mall: '🛒', default: '📍',
 };
 
 const CAT_COLORS: Record<string, string> = {
+  // Healthcare — reds (visually distinct from hospitality gold)
+  pharmacy: '#F59E0B', health_clinic: '#EF4444', clinic: '#EF4444',
+  hospital: '#DC2626', healthcare: '#EF4444', health_facility: '#EF4444',
+  // Hospitality — gold/amber
+  hotel_cluster: '#D97706', business_hotel: '#D97706', lifestyle_hotel: '#D97706',
+  boutique_hotel: '#D97706', luxury_hotel: '#B45309', resort_hotel: '#D97706',
+  eco_hotel: '#059669', theme_hotel: '#D97706', medical_hotel: '#D97706',
+  waterfront_hotel: '#D97706', golf_hotel: '#4D7C0F',
+  // General
   park: '#22c55e', restaurant: '#f97316', retail: '#a855f7', school: '#3b82f6',
-  mosque: '#10b981', gym: '#ef4444', clinic: '#06b6d4', supermarket: '#eab308',
-  hospital: '#ec4899', transport: '#64748b', leisure: '#f59e0b',
+  mosque: '#10b981', gym: '#ef4444', supermarket: '#eab308', mall: '#a855f7',
+  transport: '#64748b', leisure: '#f59e0b', infrastructure: '#64748b',
   entertainment: '#a855f7', recreation: '#22c55e', promenade: '#ec4899',
   lagoon: '#06b6d4', pool: '#3b82f6', playground: '#f59e0b',
+  sports_club: '#ef4444', other: '#94a3b8',
   default: '#94a3b8',
 };
 
@@ -154,17 +230,23 @@ function getAmenityFillColor(type: string): string {
     polo_park: '#22C55E', motorsport_park: '#D1FAE5', theme_park_grounds: '#FDE68A',
     themed_park: '#FEF3C7', island_park: '#6EE7B7',
     // Golf — fairway green
-    golf_park: '#365314', golf_course: '#3F6212', golf_hotel: '#4D7C0F',
+    golf_park: '#365314', golf_course: '#3F6212',
     // Sports / leisure — orange
     sports_leisure: '#FB923C', sports_village: '#F97316', leisure_facility: '#FDBA74',
     motorsport_attraction: '#FCA5A5', signature_leisure: '#F59E0B', wellness_facility: '#C4B5FD',
     // Entertainment — purple
     entertainment_facility: '#A78BFA', theme_park: '#8B5CF6', cultural_facility: '#7C3AED',
+    // Healthcare — reds/pinks
+    pharmacy: '#F59E0B', health_clinic: '#FCA5A5', clinic: '#FCA5A5',
+    hospital: '#FEE2E2', healthcare: '#FCA5A5', health_facility: '#FCA5A5',
     // Facilities — warm grey
     community_facility: '#D1D5DB', business_facility: '#E5E7EB',
-    medical_facility: '#FEE2E2', healthcare: '#FCA5A5',
+    medical_facility: '#FEE2E2', education_facility: '#D1D5DB',
     // Hospitality — gold
-    hotel_cluster: '#FDE68A', boutique_hotel: '#FCD34D', resort_hotel: '#F59E0B', luxury_hotel: '#D97706',
+    hotel_cluster: '#FDE68A', boutique_hotel: '#FCD34D', resort_hotel: '#F59E0B',
+    luxury_hotel: '#D97706', business_hotel: '#FDE68A', lifestyle_hotel: '#FCD34D',
+    eco_hotel: '#A7F3D0', theme_hotel: '#FDE68A', medical_hotel: '#FEE2E2',
+    waterfront_hotel: '#BAE6FD', golf_hotel: '#4D7C0F',
     // Retail — yellow
     retail_village: '#FEF9C3', retail_mall: '#FEF08A', lifestyle_retail: '#FDE047',
   };
