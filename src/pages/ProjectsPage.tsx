@@ -300,6 +300,15 @@ export function ProjectsPage() {
           sb.from('xray_price_model').select('*').eq('project_id', sel.id),
           sb.from('xray_za_insights').select('*').eq('project_id', sel.id).order('sort_order', { ascending: true }),
         ]);
+        if (fpRes.error) console.error('[Projects] xray_floor_plate:', fpRes.error.message);
+        if (srRes.error) console.error('[Projects] xray_surroundings:', srRes.error.message);
+        if (pmRes.error) console.error('[Projects] xray_price_model:', pmRes.error.message);
+        if (ziRes.error) console.error('[Projects] xray_za_insights:', ziRes.error.message);
+        console.log('[Projects] V3 data:', {
+          project_id: sel.id, project_name: sel.project_name,
+          floorPlate: (fpRes.data || []).length, surroundings: (srRes.data || []).length,
+          priceModel: (pmRes.data || []).length, zaInsights: (ziRes.data || []).length,
+        });
         setFloorPlate(fpRes.data || []);
         setSurroundings(srRes.data || []);
         setPriceModel(pmRes.data || []);
@@ -396,8 +405,8 @@ export function ProjectsPage() {
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
-    ...(hasV3 ? [{ key: 'floorplate', label: 'Floor Plate' }] : []),
-    ...(hasSurroundings ? [{ key: 'surroundings', label: 'Surroundings' }] : []),
+    { key: 'floorplate', label: 'Floor Plate' },
+    { key: 'surroundings', label: 'Surroundings' },
     { key: 'units', label: 'Units & Pricing' },
     ...(isApt || isOffplan ? [{ key: 'orientation', label: 'Orientation' }] : []),
     ...(isApt || isOffplan ? [{ key: 'viewblock', label: 'View Blocking' }] : []),
@@ -975,6 +984,22 @@ export function ProjectsPage() {
                   )}
 
                   {/* FLOOR PLATE (V3) */}
+                  {tab === 'floorplate' && !hasV3 && (
+                    <div>
+                      <Section title="Floor Plate" subtitle="V3 Building Intelligence" accent colors={colors}>
+                        <PCard colors={colors}>
+                          <div style={{ textAlign: 'center', padding: 32, color: colors.textDim }}>
+                            <div style={{ fontSize: 14, marginBottom: 8 }}>No floor plate data for this project</div>
+                            <div style={{ fontSize: 11, lineHeight: 1.6 }}>
+                              Table: <code>xray_floor_plate</code> · project_id: <code>{sel.id}</code><br />
+                              project_name: <code>{sel.project_name}</code><br />
+                              Check browser console for &quot;[Projects] V3 data&quot; log
+                            </div>
+                          </div>
+                        </PCard>
+                      </Section>
+                    </div>
+                  )}
                   {tab === 'floorplate' && hasV3 && (
                     <div>
                       <Section title="Interactive Floor Plate" subtitle={`xray_floor_plate · ${floorPlate.length} units mapped · Floor ${floor}`} accent colors={colors}>
@@ -1127,6 +1152,20 @@ export function ProjectsPage() {
                   )}
 
                   {/* SURROUNDINGS (V3) */}
+                  {tab === 'surroundings' && !hasSurroundings && (
+                    <div>
+                      <Section title="Surroundings" subtitle="V3 Building Intelligence" accent colors={colors}>
+                        <PCard colors={colors}>
+                          <div style={{ textAlign: 'center', padding: 32, color: colors.textDim }}>
+                            <div style={{ fontSize: 14, marginBottom: 8 }}>No surroundings data for this project</div>
+                            <div style={{ fontSize: 11 }}>
+                              Table: <code>xray_surroundings</code> · project_id: <code>{sel.id}</code>
+                            </div>
+                          </div>
+                        </PCard>
+                      </Section>
+                    </div>
+                  )}
                   {tab === 'surroundings' && hasSurroundings && (
                     <div>
                       <Section title="8-Direction Surroundings" subtitle={`xray_surroundings · ${surroundings.length} directions mapped`} accent colors={colors}>
