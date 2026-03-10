@@ -228,25 +228,54 @@ export function ProjectsPage() {
         setUnits(u.data || []);
         setAmenities(a.data || []);
         setInfra(i.data || []);
-        if (sel.rera_registration_no) {
+        // DLD: map by project_name_en (same field used in PricePredictionPage)
+        // Fallback chain: project_name → rera_registration_no (project_number)
+        const dldName = sel.project_name;
+        if (dldName) {
           const [dr, ds] = await Promise.all([
-            sb.from('xray_dld_recent').select('*').eq('project_number', sel.rera_registration_no).order('instance_date', { ascending: false }).limit(15),
-            sb.from('xray_dld_summary').select('*').eq('project_number', sel.rera_registration_no),
+            sb.from('xray_dld_recent').select('*').eq('project_name_en', dldName).order('instance_date', { ascending: false }).limit(20),
+            sb.from('xray_dld_summary').select('*').eq('project_name_en', dldName),
           ]);
           if (dr.error) console.error('[Projects] xray_dld_recent:', dr.error.message);
           if (ds.error) console.error('[Projects] xray_dld_summary:', ds.error.message);
-          setDldRecent(dr.data || []);
-          setDldSummary(ds.data || []);
-          // Ejari from gold.v_ejari_community_summary (community-level, replaces xray_ejari_summary)
-          if (sel.master_community) {
-            const ej = await gold().from('v_ejari_community_summary').select('*').eq('master_community', sel.master_community);
-            if (ej.error) console.error('[Projects] gold.v_ejari_community_summary:', ej.error.message);
-            setEjari(ej.data || []);
+          // If project_name_en didn't match, try project_number with rera_registration_no as fallback
+          if ((!dr.data || dr.data.length === 0) && sel.rera_registration_no) {
+            console.log('[Projects] DLD: project_name_en match empty, trying project_number fallback for', sel.project_name);
+            const [dr2, ds2] = await Promise.all([
+              sb.from('xray_dld_recent').select('*').eq('project_number', sel.rera_registration_no).order('instance_date', { ascending: false }).limit(20),
+              sb.from('xray_dld_summary').select('*').eq('project_number', sel.rera_registration_no),
+            ]);
+            setDldRecent(dr2.data || []);
+            setDldSummary(ds2.data || []);
           } else {
-            setEjari([]);
+            setDldRecent(dr.data || []);
+            setDldSummary(ds.data || []);
           }
+          console.log('[Projects] DLD mapped:', { project_name: dldName, rera: sel.rera_registration_no, recentCount: (dr.data || []).length });
         } else {
-          setDldRecent([]); setDldSummary([]); setEjari([]);
+          setDldRecent([]); setDldSummary([]);
+        }
+        // Ejari: try project-level first (project_name), then fall back to community-level (master_community)
+        if (sel.master_community) {
+          let ejData: R[] = [];
+          // Try project-level Ejari if project_name is available
+          if (sel.project_name) {
+            const ejProj = await gold().from('v_ejari_community_summary').select('*').eq('project_name', sel.project_name);
+            if (!ejProj.error && ejProj.data && ejProj.data.length > 0) {
+              ejData = ejProj.data;
+              console.log('[Projects] Ejari: matched by project_name', sel.project_name, ejData.length, 'rows');
+            }
+          }
+          // Fall back to community-level if project-level returned nothing
+          if (ejData.length === 0) {
+            const ejComm = await gold().from('v_ejari_community_summary').select('*').eq('master_community', sel.master_community);
+            if (ejComm.error) console.error('[Projects] gold.v_ejari_community_summary:', ejComm.error.message);
+            ejData = ejComm.data || [];
+            console.log('[Projects] Ejari: matched by master_community', sel.master_community, ejData.length, 'rows');
+          }
+          setEjari(ejData);
+        } else {
+          setEjari([]);
         }
         // View blocking via community mapping
         const vbMap: Record<string, string> = {
@@ -828,7 +857,7 @@ export function ProjectsPage() {
                     <div>
                       <Section title="DLD Transaction Evidence" subtitle="Real sales registered with Dubai Land Department." accent colors={colors}>
                         {dldRecent.length === 0 ? (
-                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No recent DLD transactions linked (project_number: {sel.rera_registration_no || 'not mapped'})</div></PCard>
+                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No recent DLD transactions linked (project_name: {sel.project_name || 'not mapped'})</div></PCard>
                         ) : dldRecent.map((tx, i) => (
                           <PCard key={i} colors={colors} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
