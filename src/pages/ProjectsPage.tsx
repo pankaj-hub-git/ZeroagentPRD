@@ -132,6 +132,10 @@ function ProjectSidebar({ projects, sel, onSelect, colors, isDark }: {
                     fontSize: 8, fontWeight: 700, letterSpacing: '0.5px', padding: '1px 5px',
                     borderRadius: 2, background: cc + '20', color: cc,
                   }}>{catLabel[p.project_category] || ''}</span>
+                  {p.has_floor_plate && <span style={{
+                    fontSize: 7, fontWeight: 700, letterSpacing: '0.5px', padding: '1px 4px',
+                    borderRadius: 2, background: '#C9A84C20', color: '#C9A84C',
+                  }}>V3</span>}
                   <span style={{ fontSize: 9, color: colors.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.master_community}
                   </span>
@@ -172,6 +176,14 @@ export function ProjectsPage() {
   const [dldSummary, setDldSummary] = useState<R[]>([]);
   const [ejari, setEjari] = useState<R[]>([]);
   const [viewBlocking, setViewBlocking] = useState<R[]>([]);
+  // V3 tables
+  const [floorPlate, setFloorPlate] = useState<R[]>([]);
+  const [surroundings, setSurroundings] = useState<R[]>([]);
+  const [priceModel, setPriceModel] = useState<R[]>([]);
+  const [zaInsights, setZaInsights] = useState<R[]>([]);
+  const [floor, setFloor] = useState(12);
+  const [hovered, setHovered] = useState<R | null>(null);
+  const [colorBy, setColorBy] = useState<'orient' | 'price' | 'yield'>('orient');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,6 +264,18 @@ export function ProjectsPage() {
         } else {
           setViewBlocking([]);
         }
+        // V3 tables — floor plate, surroundings, price model, ZA insights
+        const [fpRes, srRes, pmRes, ziRes] = await Promise.all([
+          sb.from('xray_floor_plate').select('*').eq('project_id', sel.id).order('position_number', { ascending: true }),
+          sb.from('xray_surroundings').select('*').eq('project_id', sel.id).order('direction', { ascending: true }),
+          sb.from('xray_price_model').select('*').eq('project_id', sel.id),
+          sb.from('xray_za_insights').select('*').eq('project_id', sel.id).order('sort_order', { ascending: true }),
+        ]);
+        setFloorPlate(fpRes.data || []);
+        setSurroundings(srRes.data || []);
+        setPriceModel(pmRes.data || []);
+        setZaInsights(ziRes.data || []);
+        setFloor(Math.round((sel.total_floors || 20) / 2));
       } catch (e) {
         console.error('[Projects] Detail load error:', e);
       }
@@ -283,9 +307,68 @@ export function ProjectsPage() {
   const isApt = cat === 'apartment';
   const isVilla = cat === 'villa';
   const isOffplan = cat === 'off_plan';
+  const hasV3 = floorPlate.length > 0;
+  const hasInsights = zaInsights.length > 0;
+  const hasSurroundings = surroundings.length > 0;
+
+  // V3 surroundings type colors
+  const surrTypeColor: Record<string, string> = {
+    premium: '#C9A84C', positive: '#27AE60', mixed: '#3498DB',
+    neutral: '#8892a4', caution: '#F39C12', negative: '#E74C3C',
+  };
+
+  // V3 orient score from surroundings type
+  const surrTypeScore: Record<string, number> = {
+    premium: 1, positive: 0.5, mixed: 0, neutral: -0.2, caution: -0.6, negative: -1,
+  };
+
+  // V3 unit data calc (price model + orient + floor)
+  function getUnitData(unit: R, fl: number) {
+    const pm = priceModel.find(p =>
+      p.unit_type === unit.unit_type ||
+      (unit.unit_type === '1BR' && p.unit_type === '1 B/R') ||
+      (unit.unit_type === '2BR' && p.unit_type === '2 B/R') ||
+      (unit.unit_type === '3BR' && p.unit_type === '3 B/R') ||
+      (unit.unit_type === 'Studio' && p.unit_type === 'Studio') ||
+      (unit.unit_type === '4BR' && p.unit_type === '4 B/R')
+    );
+    if (!pm) return null;
+    const surr = surroundings.find(s => s.direction === unit.orientation);
+    const orientScore = surr ? (surrTypeScore[surr.type] ?? 0) : 0;
+    const spreadHalf = ((pm.psf_high || 0) - (pm.psf_low || 0)) / 2;
+    const totalFloors = sel?.total_floors || 20;
+    const midFloor = Math.round(totalFloors / 2);
+    const psf = Math.round((pm.psf_mid || 0) + orientScore * spreadHalf + (fl - midFloor) * (pm.floor_adj_per_floor || 0));
+    const price = Math.round(psf * (unit.sqft || 0) / 1000) * 1000;
+    const rentBase = pm.rent_base_annual || 0;
+    const rent = Math.round(rentBase * (1 + orientScore * (pm.orient_rent_factor || 0.08) + (fl - midFloor) * (pm.floor_rent_factor || 0.005)) / 1000) * 1000;
+    const grossYield = price > 0 ? ((rent / price) * 100).toFixed(1) : '—';
+    return { psf, price, rent, grossYield, confidence: pm.confidence, source_txn_count: pm.source_txn_count, surr };
+  }
+
+  // V3 orient color for floor plate
+  const orientColors: Record<string, string> = {
+    N: '#3498DB', NE: '#2ECC71', E: '#F39C12', SE: '#C9A84C',
+    S: '#8E44AD', SW: '#E67E22', W: '#E74C3C', NW: '#95A5A6',
+  };
+
+  // V3 confidence badge
+  function ConfBadge({ confidence }: { confidence?: string }) {
+    if (confidence === 'verified') return <span style={{ fontSize: 9, color: '#27AE60' }}>🟢 VERIFIED</span>;
+    if (confidence === 'inferred') return <span style={{ fontSize: 9, color: '#F39C12' }}>🟡 INFERRED</span>;
+    return <span style={{ fontSize: 9, color: '#E74C3C' }}>🔴 ESTIMATED</span>;
+  }
+
+  // V3 insight type colors
+  const insightTypeColor: Record<string, string> = {
+    price_spread: '#C9A84C', yield_signal: '#27AE60', sc_impact: '#E74C3C',
+    data_gap: '#95A5A6', orientation_premium: '#3498DB', rental_demand: '#8E44AD',
+  };
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
+    ...(hasV3 ? [{ key: 'floorplate', label: 'Floor Plate' }] : []),
+    ...(hasSurroundings ? [{ key: 'surroundings', label: 'Surroundings' }] : []),
     { key: 'units', label: 'Units & Pricing' },
     ...(isApt || isOffplan ? [{ key: 'orientation', label: 'Orientation' }] : []),
     ...(isApt || isOffplan ? [{ key: 'viewblock', label: 'View Blocking' }] : []),
@@ -294,7 +377,7 @@ export function ProjectsPage() {
     { key: 'evidence', label: 'DLD Evidence' },
     { key: 'rentals', label: 'Ejari Rentals' },
     { key: 'amenities', label: 'Amenities' },
-    { key: 'honest', label: "What They Don't Tell You" },
+    { key: 'insights', label: hasInsights ? 'ZA Insights' : "What They Don't Tell You" },
   ];
 
   return (
@@ -463,10 +546,14 @@ export function ProjectsPage() {
                                 <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2, lineHeight: 1.5 }}>{u.layout_description}</div>
                               </div>
                             )}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, flexWrap: 'wrap', gap: 6 }}>
                               <div style={{ color: colors.textSecondary }}>Orientation: {u.orientation || 'Various'}</div>
                               {u.view_type?.length > 0 && <div style={{ color: colors.gold }}>{u.view_type.join(' · ')}</div>}
                               {u.total_units_this_type && <div style={{ color: colors.textDim }}>{u.total_units_this_type} units</div>}
+                              {(() => {
+                                const pm = priceModel.find(p => p.unit_type === u.unit_type || p.unit_type === u.unit_type?.replace(/(\d)BR/, '$1 B/R'));
+                                return pm ? <div style={{ color: colors.green, fontFamily: FONT_DATA }}>DLD: {fmt(pm.psf_low)}–{fmt(pm.psf_high)} PSF ({pm.source_txn_count} txns)</div> : null;
+                              })()}
                             </div>
                           </PCard>
                         ))}
@@ -749,7 +836,7 @@ export function ProjectsPage() {
                                 <span style={{ fontSize: 13, fontWeight: 500 }}>{tx.rooms_en}</span>
                                 <Badge color={colors.green} label="DLD VERIFIED" />
                               </div>
-                              <div style={{ fontSize: 10, color: colors.textDim, marginTop: 3 }}>{tx.instance_date} · {fmt(tx.sqft)} sqm · {tx.reg_type_en}</div>
+                              <div style={{ fontSize: 10, color: colors.textDim, marginTop: 3 }}>{tx.instance_date} · {fmt(tx.sqft)} sqft · {tx.reg_type_en}</div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
                               <div className="za-data-value-lg" style={{ fontSize: 16 }}>AED {fmt(tx.price_aed)}</div>
@@ -821,12 +908,19 @@ export function ProjectsPage() {
                         {amenities.length === 0 ? (
                           <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>Amenity data pending</div></PCard>
                         ) : amenities.map((a, i) => (
-                          <PCard key={i} colors={colors} style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <PCard key={i} colors={colors} style={{ marginBottom: 4, display: 'grid', gridTemplateColumns: '1fr 60px auto', gap: 8, alignItems: 'center' }}>
                             <div>
                               <span style={{ fontSize: 12, color: colors.text }}>{a.amenity_name}</span>
                               <span style={{ fontSize: 10, color: colors.textDim, marginLeft: 8 }}>{a.amenity_category}</span>
-                              {a.community_sentiment_score && <span style={{ fontSize: 10, color: colors.gold, marginLeft: 8 }}>Sentiment: {Number(a.community_sentiment_score).toFixed(1)}/5</span>}
                             </div>
+                            {a.community_sentiment_score ? (
+                              <div style={{ textAlign: 'center' }}>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: Number(a.community_sentiment_score) >= 4 ? colors.green : Number(a.community_sentiment_score) >= 3 ? colors.gold : colors.orange, fontFamily: FONT_DATA }}>
+                                  {Number(a.community_sentiment_score).toFixed(1)}
+                                </div>
+                                <div style={{ fontSize: 7, color: colors.textDim, textTransform: 'uppercase' }}>{a.sentiment_volume ? `${a.sentiment_volume} reviews` : '/5'}</div>
+                              </div>
+                            ) : <div />}
                             <Badge
                               color={a.delivery_status === 'fully_delivered' || a.delivery_status === 'exceeded' ? colors.green : a.delivery_status === 'planned' ? colors.blue : a.delivery_status === 'pending_verification' || a.delivery_status === 'partially_delivered' ? colors.orange : colors.red}
                               label={a.delivery_status?.replace(/_/g, ' ').toUpperCase()}
@@ -851,9 +945,240 @@ export function ProjectsPage() {
                     </div>
                   )}
 
-                  {/* HONEST ASSESSMENT */}
-                  {tab === 'honest' && (
+                  {/* FLOOR PLATE (V3) */}
+                  {tab === 'floorplate' && hasV3 && (
                     <div>
+                      <Section title="Interactive Floor Plate" subtitle={`xray_floor_plate · ${floorPlate.length} units mapped · Floor ${floor}`} accent colors={colors}>
+                        {/* Color mode toggle */}
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+                          {(['orient', 'price', 'yield'] as const).map(m => (
+                            <button key={m} onClick={() => setColorBy(m)} style={{
+                              padding: '5px 12px', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                              letterSpacing: 0.5, fontFamily: FONT_DATA,
+                              background: colorBy === m ? colors.goldBg : colors.cardBg,
+                              border: `1px solid ${colorBy === m ? colors.gold : colors.border}`,
+                              color: colorBy === m ? colors.gold : colors.textSecondary,
+                            }}>
+                              {m === 'orient' ? 'VIEW' : m === 'price' ? 'PRICE' : 'YIELD'}
+                            </button>
+                          ))}
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <ConfBadge confidence={floorPlate[0]?.confidence} />
+                            <span style={{ fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA }}>
+                              {priceModel.length > 0 ? `${priceModel.reduce((a, p) => a + (p.source_txn_count || 0), 0)} DLD txns` : ''}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                          {/* Floor selector */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', minWidth: 36 }}>
+                            <div style={{ fontSize: 8, color: colors.textDim, fontFamily: FONT_DATA, marginBottom: 4 }}>FLOOR</div>
+                            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400 }}>
+                              {Array.from({ length: sel?.total_floors || 20 }, (_, i) => (sel?.total_floors || 20) - i).map(f => (
+                                <button key={f} onClick={() => setFloor(f)} style={{
+                                  width: 32, padding: '3px 0', fontSize: 9, fontFamily: FONT_DATA,
+                                  textAlign: 'center', borderRadius: 3, cursor: 'pointer', border: 'none',
+                                  background: f === floor ? colors.gold : colors.cardBg,
+                                  color: f === floor ? colors.bg : colors.textSecondary,
+                                  fontWeight: f === floor ? 700 : 400,
+                                }}>{f}</button>
+                              ))}
+                            </div>
+                          </div>
+                          {/* SVG floor plate */}
+                          <div style={{ flex: 1, position: 'relative' }}>
+                            <svg viewBox="0 0 106 94" style={{ width: '100%', background: isDark ? '#0a0b0f' : '#f5f5f0', borderRadius: 8, border: `1px solid ${colors.border}` }}>
+                              {/* Direction labels from surroundings */}
+                              {surroundings.filter(s => ['N','S','E','W'].includes(s.direction)).map(s => {
+                                const pos: Record<string, {x: number; y: number}> = { N: {x:53,y:4}, S: {x:53,y:92}, E: {x:103,y:47}, W: {x:3,y:47} };
+                                const p = pos[s.direction] || {x:53,y:47};
+                                return <text key={s.direction} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="4" fill={surrTypeColor[s.type] || colors.textDim} fontWeight="700">{s.direction}</text>;
+                              })}
+                              {/* Core/lift shaft */}
+                              <rect x={46} y={40} width={14} height={14} rx={2} fill={isDark ? '#1a1b22' : '#e0e0e0'} stroke={colors.border} strokeWidth={0.3} />
+                              <text x={53} y={48} textAnchor="middle" fontSize="3" fill={colors.textDim}>CORE</text>
+                              {/* Units */}
+                              {floorPlate.filter(u => floor >= (u.floor_range_from || 1) && floor <= (u.floor_range_to || 99)).map((u: R) => {
+                                const ud = getUnitData(u, floor);
+                                let fillColor = orientColors[u.orientation] || '#555';
+                                if (colorBy === 'price' && ud) {
+                                  const psfRange = priceModel.find(p => p.unit_type === u.unit_type || p.unit_type === u.unit_type.replace('BR', ' B/R'));
+                                  const psfMin = psfRange?.psf_low || 800;
+                                  const psfMax = psfRange?.psf_high || 2000;
+                                  const t = Math.min(1, Math.max(0, (ud.psf - psfMin) / (psfMax - psfMin)));
+                                  fillColor = t > 0.66 ? '#C9A84C' : t > 0.33 ? '#F39C12' : '#27AE60';
+                                } else if (colorBy === 'yield' && ud && ud.grossYield !== '—') {
+                                  const y = parseFloat(ud.grossYield);
+                                  fillColor = y >= 7 ? '#27AE60' : y >= 5 ? '#C9A84C' : '#E74C3C';
+                                }
+                                const isHov = hovered?.position_number === u.position_number;
+                                return (
+                                  <g key={u.position_number}
+                                    onMouseEnter={() => setHovered({ ...u, _ud: ud })}
+                                    onMouseLeave={() => setHovered(null)}
+                                    style={{ cursor: 'pointer' }}>
+                                    <rect x={u.x} y={u.y} width={u.w} height={u.h} rx={1}
+                                      fill={fillColor + (isHov ? 'FF' : '88')}
+                                      stroke={isHov ? colors.gold : colors.border} strokeWidth={isHov ? 0.8 : 0.3} />
+                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 - 1.5} textAnchor="middle" fontSize="3" fontWeight="700" fill={isDark ? '#fff' : '#000'}>{u.unit_type}</text>
+                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 + 2} textAnchor="middle" fontSize="2.2" fill={isDark ? '#aaa' : '#666'}>{fmt(u.sqft)}sf</text>
+                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 + 4.5} textAnchor="middle" fontSize="2" fill={isDark ? '#888' : '#999'}>#{u.position_number}</text>
+                                  </g>
+                                );
+                              })}
+                            </svg>
+                            {/* Hover tooltip */}
+                            {hovered && (
+                              <div style={{
+                                position: 'absolute', top: 8, right: 8, background: colors.surface,
+                                border: `1px solid ${colors.gold}`, borderRadius: 8, padding: 12,
+                                minWidth: 200, boxShadow: `0 4px 20px ${colors.bg}88`, zIndex: 10,
+                              }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 6 }}>
+                                  {hovered.unit_type} · #{hovered.position_number}
+                                </div>
+                                <div style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+                                  {fmt(hovered.sqft)} sqft · {hovered.orientation} facing
+                                </div>
+                                {hovered._ud?.surr && (
+                                  <div style={{ fontSize: 10, color: surrTypeColor[hovered._ud.surr.type] || colors.textDim, marginBottom: 6 }}>
+                                    {hovered._ud.surr.icon} {hovered._ud.surr.what}
+                                    {hovered._ud.surr.note && <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>{hovered._ud.surr.note}</div>}
+                                  </div>
+                                )}
+                                {hovered._ud ? (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>PRICE</div>
+                                      <div style={{ fontSize: 12, color: colors.gold, fontWeight: 700, fontFamily: FONT_DATA }}>AED {fmtM(hovered._ud.price)}</div>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>{fmt(hovered._ud.psf)}/sqft</div>
+                                    </div>
+                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>RENT</div>
+                                      <div style={{ fontSize: 12, color: colors.green, fontWeight: 700, fontFamily: FONT_DATA }}>AED {fmt(hovered._ud.rent)}/yr</div>
+                                    </div>
+                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>GROSS YIELD</div>
+                                      <div style={{ fontSize: 12, color: parseFloat(hovered._ud.grossYield) >= 6 ? colors.green : colors.orange, fontWeight: 700, fontFamily: FONT_DATA }}>{hovered._ud.grossYield}%</div>
+                                    </div>
+                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>CONFIDENCE</div>
+                                      <ConfBadge confidence={hovered._ud.confidence} />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: 10, color: colors.textDim }}>No price model for {hovered.unit_type}</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Legend */}
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, padding: '10px 0', borderTop: `1px solid ${colors.border}` }}>
+                          {colorBy === 'orient' && Object.entries(orientColors).map(([dir, col]) => (
+                            <div key={dir} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: col + '88' }} />{dir}
+                            </div>
+                          ))}
+                          {colorBy === 'price' && ['Low PSF|#27AE60', 'Mid PSF|#F39C12', 'High PSF|#C9A84C'].map(s => {
+                            const [l, c] = s.split('|');
+                            return <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: c + '88' }} />{l}
+                            </div>;
+                          })}
+                          {colorBy === 'yield' && ['≥7% Yield|#27AE60', '5-7% Yield|#C9A84C', '<5% Yield|#E74C3C'].map(s => {
+                            const [l, c] = s.split('|');
+                            return <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: c + '88' }} />{l}
+                            </div>;
+                          })}
+                        </div>
+                      </Section>
+                    </div>
+                  )}
+
+                  {/* SURROUNDINGS (V3) */}
+                  {tab === 'surroundings' && hasSurroundings && (
+                    <div>
+                      <Section title="8-Direction Surroundings" subtitle={`xray_surroundings · ${surroundings.length} directions mapped`} accent colors={colors}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          {['N','NE','E','SE','S','SW','W','NW'].map(dir => {
+                            const s = surroundings.find(sr => sr.direction === dir);
+                            if (!s) return (
+                              <PCard key={dir} colors={colors} style={{ opacity: 0.4 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim }}>{dir}</div>
+                                <div style={{ fontSize: 10, color: colors.textDim }}>No data</div>
+                              </PCard>
+                            );
+                            const tc = surrTypeColor[s.type] || colors.textDim;
+                            return (
+                              <PCard key={dir} colors={colors} style={{ borderLeft: `3px solid ${tc}` }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 18 }}>{s.icon || '📍'}</span>
+                                    <div>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{dir}</div>
+                                      <div style={{ fontSize: 10, color: colors.textDim }}>{s.label}</div>
+                                    </div>
+                                  </div>
+                                  <span style={{
+                                    fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 3,
+                                    background: tc + '20', color: tc, textTransform: 'uppercase',
+                                  }}>{s.type}</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.5 }}>{s.what}</div>
+                                {s.note && <div style={{ fontSize: 10, color: colors.textDim, marginTop: 4, fontStyle: 'italic' }}>{s.note}</div>}
+                              </PCard>
+                            );
+                          })}
+                        </div>
+                        {/* Legend */}
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, padding: '10px 0', borderTop: `1px solid ${colors.border}` }}>
+                          {Object.entries(surrTypeColor).map(([type, col]) => (
+                            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: col + '44', border: `1px solid ${col}` }} />
+                              {type}
+                            </div>
+                          ))}
+                        </div>
+                      </Section>
+                    </div>
+                  )}
+
+                  {/* ZA INSIGHTS / HONEST ASSESSMENT */}
+                  {tab === 'insights' && (
+                    <div>
+                      {hasInsights ? (
+                        <Section title="ZA Insights" subtitle="Every insight computed from DLD, Ejari, or Mollak — no manual opinions" accent colors={colors}>
+                          {zaInsights.map((zi, i) => {
+                            const tc = insightTypeColor[zi.insight_type] || colors.textDim;
+                            return (
+                              <PCard key={i} colors={colors} style={{ marginBottom: 10, borderLeft: `3px solid ${tc}` }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                  <span style={{
+                                    fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 3,
+                                    background: tc + '20', color: tc, textTransform: 'uppercase', letterSpacing: 0.5,
+                                  }}>{zi.insight_type?.replace(/_/g, ' ')}</span>
+                                  <ConfBadge confidence={zi.confidence} />
+                                </div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 4 }}>{zi.title}</div>
+                                <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.7 }}>{zi.insight}</div>
+                                {zi.data_source && (
+                                  <div style={{ fontSize: 9, color: colors.textDim, marginTop: 6, fontFamily: FONT_DATA }}>
+                                    Source: {zi.data_source}{zi.computed_from ? ` · ${zi.computed_from}` : ''}
+                                  </div>
+                                )}
+                              </PCard>
+                            );
+                          })}
+                          <div className="za-signal-box za-signal-box--gold" style={{ textAlign: 'center', marginTop: 16 }}>
+                            <div style={{ fontSize: 11, color: colors.textSecondary }}>
+                              Every insight computed from DLD transactions, Ejari contracts, or Mollak service charges. No manual opinions.
+                            </div>
+                          </div>
+                        </Section>
+                      ) : (
+                      <>
                       <Section title="What They Don't Tell You" subtitle="The honest things no marketing brochure includes" accent colors={colors}>
                         <PCard colors={colors} style={{ marginBottom: 12 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -948,6 +1273,8 @@ export function ProjectsPage() {
                           Every number in this document can be independently verified. That's the point.
                         </div>
                       </div>
+                      </>
+                      )}
                     </div>
                   )}
                 </>
