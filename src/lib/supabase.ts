@@ -33,9 +33,9 @@ export const layers = () => sb.schema('layers');
     { schema: 'gold', table: 'developer_scores', query: gold().from('developer_scores').select('*', { count: 'exact', head: true }) },
     { schema: 'layers', table: 'communities', query: layers().from('communities').select('*', { count: 'exact', head: true }) },
     // V3 tables
-    { schema: 'public', table: 'xray_floor_plate', query: sb.from('xray_floor_plate').select('*', { count: 'exact', head: true }) },
+    { schema: 'public', table: 'xray_unit_registry', query: sb.from('xray_unit_registry').select('*', { count: 'exact', head: true }) },
     { schema: 'public', table: 'xray_surroundings', query: sb.from('xray_surroundings').select('*', { count: 'exact', head: true }) },
-    { schema: 'public', table: 'xray_price_model', query: sb.from('xray_price_model').select('*', { count: 'exact', head: true }) },
+    { schema: 'public', table: 'xray_floor_pricing', query: sb.from('xray_floor_pricing').select('*', { count: 'exact', head: true }) },
     { schema: 'public', table: 'xray_za_insights', query: sb.from('xray_za_insights').select('*', { count: 'exact', head: true }) },
   ];
   for (const { schema, table, query } of checks) {

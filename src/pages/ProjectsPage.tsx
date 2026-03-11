@@ -132,7 +132,7 @@ function ProjectSidebar({ projects, sel, onSelect, colors, isDark }: {
                     fontSize: 8, fontWeight: 700, letterSpacing: '0.5px', padding: '1px 5px',
                     borderRadius: 2, background: cc + '20', color: cc,
                   }}>{catLabel[p.project_category] || ''}</span>
-                  {p.has_floor_plate && <span style={{
+                  {p.has_unit_registry && <span style={{
                     fontSize: 7, fontWeight: 700, letterSpacing: '0.5px', padding: '1px 4px',
                     borderRadius: 2, background: '#C9A84C20', color: '#C9A84C',
                   }}>V3</span>}
@@ -295,14 +295,14 @@ export function ProjectsPage() {
         }
         // V3 tables — floor plate, surroundings, price model, ZA insights
         const [fpRes, srRes, pmRes, ziRes] = await Promise.all([
-          sb.from('xray_floor_plate').select('*').eq('project_id', sel.id).order('position_number', { ascending: true }),
+          sb.from('xray_unit_registry').select('*').eq('project_id', sel.id).order('position_number', { ascending: true }),
           sb.from('xray_surroundings').select('*').eq('project_id', sel.id).order('direction', { ascending: true }),
-          sb.from('xray_price_model').select('*').eq('project_id', sel.id),
+          sb.from('xray_floor_pricing').select('*').eq('project_id', sel.id),
           sb.from('xray_za_insights').select('*').eq('project_id', sel.id).order('sort_order', { ascending: true }),
         ]);
-        if (fpRes.error) console.error('[Projects] xray_floor_plate:', fpRes.error.message);
+        if (fpRes.error) console.error('[Projects] xray_unit_registry:', fpRes.error.message);
         if (srRes.error) console.error('[Projects] xray_surroundings:', srRes.error.message);
-        if (pmRes.error) console.error('[Projects] xray_price_model:', pmRes.error.message);
+        if (pmRes.error) console.error('[Projects] xray_floor_pricing:', pmRes.error.message);
         if (ziRes.error) console.error('[Projects] xray_za_insights:', ziRes.error.message);
         console.log('[Projects] V3 data:', {
           project_id: sel.id, project_name: sel.project_name,
@@ -991,7 +991,7 @@ export function ProjectsPage() {
                           <div style={{ textAlign: 'center', padding: 32, color: colors.textDim }}>
                             <div style={{ fontSize: 14, marginBottom: 8 }}>No floor plate data for this project</div>
                             <div style={{ fontSize: 11, lineHeight: 1.6 }}>
-                              Table: <code>xray_floor_plate</code> · project_id: <code>{sel.id}</code><br />
+                              Table: <code>xray_unit_registry</code> · project_id: <code>{sel.id}</code><br />
                               project_name: <code>{sel.project_name}</code><br />
                               Check browser console for &quot;[Projects] V3 data&quot; log
                             </div>
@@ -1002,7 +1002,7 @@ export function ProjectsPage() {
                   )}
                   {tab === 'floorplate' && hasV3 && (
                     <div>
-                      <Section title="Interactive Floor Plate" subtitle={`xray_floor_plate · ${floorPlate.length} units mapped · Floor ${floor}`} accent colors={colors}>
+                      <Section title="Interactive Floor Plate" subtitle={`xray_unit_registry · ${floorPlate.length} units mapped · Floor ${floor}`} accent colors={colors}>
                         {/* Color mode toggle */}
                         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
                           {(['orient', 'price', 'yield'] as const).map(m => (
