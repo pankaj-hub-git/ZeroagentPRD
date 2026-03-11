@@ -37,6 +37,7 @@ export const layers = () => sb.schema('layers');
     { schema: 'public', table: 'xray_surroundings', query: sb.from('xray_surroundings').select('*', { count: 'exact', head: true }) },
     { schema: 'public', table: 'xray_floor_pricing', query: sb.from('xray_floor_pricing').select('*', { count: 'exact', head: true }) },
     { schema: 'public', table: 'xray_za_insights', query: sb.from('xray_za_insights').select('*', { count: 'exact', head: true }) },
+    { schema: 'public', table: 'xray_ejari_summary', query: sb.from('xray_ejari_summary').select('*', { count: 'exact', head: true }) },
   ];
   for (const { schema, table, query } of checks) {
     const { count, error } = await query;

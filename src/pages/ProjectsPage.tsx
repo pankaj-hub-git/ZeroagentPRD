@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/lib/theme';
-import { sb, gold } from '@/lib/supabase';
+import { sb } from '@/lib/supabase';
 import { Loader2, Search, Sun, Moon } from 'lucide-react';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -177,13 +177,13 @@ export function ProjectsPage() {
   const [ejari, setEjari] = useState<R[]>([]);
   const [viewBlocking, setViewBlocking] = useState<R[]>([]);
   // V3 tables
-  const [floorPlate, setFloorPlate] = useState<R[]>([]);
+  const [unitRegistry, setUnitRegistry] = useState<R[]>([]);
+  const [floorPricing, setFloorPricing] = useState<R[]>([]);
   const [surroundings, setSurroundings] = useState<R[]>([]);
-  const [priceModel, setPriceModel] = useState<R[]>([]);
   const [zaInsights, setZaInsights] = useState<R[]>([]);
-  const [floor, setFloor] = useState(12);
-  const [hovered, setHovered] = useState<R | null>(null);
-  const [colorBy, setColorBy] = useState<'orient' | 'price' | 'yield'>('orient');
+  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const [hoveredUnit, setHoveredUnit] = useState<R | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,9 +194,8 @@ export function ProjectsPage() {
         const { data, error: err } = await sb.from('xray_projects')
           .select('*')
           .not('avg_price_per_sqft', 'is', null)
-          .not('orientation_primary', 'is', null)
           .order('avg_price_per_sqft', { ascending: false })
-          .limit(100);
+          .limit(200);
         if (err) {
           console.error('[Projects] xray_projects error:', err.message);
           setError(err.message);
@@ -228,54 +227,22 @@ export function ProjectsPage() {
         setUnits(u.data || []);
         setAmenities(a.data || []);
         setInfra(i.data || []);
-        // DLD: map by project_name_en (same field used in PricePredictionPage)
-        // Fallback chain: project_name → rera_registration_no (project_number)
-        const dldName = sel.project_name;
-        if (dldName) {
-          const [dr, ds] = await Promise.all([
-            sb.from('xray_dld_recent').select('*').eq('project_name_en', dldName).order('instance_date', { ascending: false }).limit(20),
-            sb.from('xray_dld_summary').select('*').eq('project_name_en', dldName),
+        // DLD + Ejari via rera_registration_no
+        if (sel.rera_registration_no) {
+          const [dr, ds, ej] = await Promise.all([
+            sb.from('xray_dld_recent').select('*').eq('project_number', sel.rera_registration_no).order('instance_date', { ascending: false }).limit(20),
+            sb.from('xray_dld_summary').select('*').eq('project_number', sel.rera_registration_no),
+            sb.from('xray_ejari_summary').select('*').eq('project_number', sel.rera_registration_no).order('unit_type', { ascending: true }),
           ]);
           if (dr.error) console.error('[Projects] xray_dld_recent:', dr.error.message);
           if (ds.error) console.error('[Projects] xray_dld_summary:', ds.error.message);
-          // If project_name_en didn't match, try project_number with rera_registration_no as fallback
-          if ((!dr.data || dr.data.length === 0) && sel.rera_registration_no) {
-            console.log('[Projects] DLD: project_name_en match empty, trying project_number fallback for', sel.project_name);
-            const [dr2, ds2] = await Promise.all([
-              sb.from('xray_dld_recent').select('*').eq('project_number', sel.rera_registration_no).order('instance_date', { ascending: false }).limit(20),
-              sb.from('xray_dld_summary').select('*').eq('project_number', sel.rera_registration_no),
-            ]);
-            setDldRecent(dr2.data || []);
-            setDldSummary(ds2.data || []);
-          } else {
-            setDldRecent(dr.data || []);
-            setDldSummary(ds.data || []);
-          }
-          console.log('[Projects] DLD mapped:', { project_name: dldName, rera: sel.rera_registration_no, recentCount: (dr.data || []).length });
+          if (ej.error) console.error('[Projects] xray_ejari_summary:', ej.error.message);
+          setDldRecent(dr.data || []);
+          setDldSummary(ds.data || []);
+          setEjari(ej.data || []);
+          console.log('[Projects] DLD+Ejari mapped:', { rera: sel.rera_registration_no, recent: (dr.data || []).length, summary: (ds.data || []).length, ejari: (ej.data || []).length });
         } else {
-          setDldRecent([]); setDldSummary([]);
-        }
-        // Ejari: try project-level first (project_name), then fall back to community-level (master_community)
-        if (sel.master_community) {
-          let ejData: R[] = [];
-          // Try project-level Ejari if project_name is available
-          if (sel.project_name) {
-            const ejProj = await gold().from('v_ejari_community_summary').select('*').eq('project_name', sel.project_name);
-            if (!ejProj.error && ejProj.data && ejProj.data.length > 0) {
-              ejData = ejProj.data;
-              console.log('[Projects] Ejari: matched by project_name', sel.project_name, ejData.length, 'rows');
-            }
-          }
-          // Fall back to community-level if project-level returned nothing
-          if (ejData.length === 0) {
-            const ejComm = await gold().from('v_ejari_community_summary').select('*').eq('master_community', sel.master_community);
-            if (ejComm.error) console.error('[Projects] gold.v_ejari_community_summary:', ejComm.error.message);
-            ejData = ejComm.data || [];
-            console.log('[Projects] Ejari: matched by master_community', sel.master_community, ejData.length, 'rows');
-          }
-          setEjari(ejData);
-        } else {
-          setEjari([]);
+          setDldRecent([]); setDldSummary([]); setEjari([]);
         }
         // View blocking via community mapping
         const vbMap: Record<string, string> = {
@@ -293,27 +260,35 @@ export function ProjectsPage() {
         } else {
           setViewBlocking([]);
         }
-        // V3 tables — floor plate, surroundings, price model, ZA insights
-        const [fpRes, srRes, pmRes, ziRes] = await Promise.all([
-          sb.from('xray_unit_registry').select('*').eq('project_id', sel.id).order('position_number', { ascending: true }),
+        // V3 tables — unit registry, floor pricing, surroundings, ZA insights
+        const [urRes, fpRes, srRes, ziRes] = await Promise.all([
+          sb.from('xray_unit_registry').select('*').eq('project_id', sel.id).order('floor', { ascending: true }).order('unit_number', { ascending: true }),
+          sb.from('xray_floor_pricing').select('*').eq('project_id', sel.id).order('rooms_en', { ascending: true }).order('floor_band', { ascending: true }),
           sb.from('xray_surroundings').select('*').eq('project_id', sel.id).order('direction', { ascending: true }),
-          sb.from('xray_floor_pricing').select('*').eq('project_id', sel.id),
           sb.from('xray_za_insights').select('*').eq('project_id', sel.id).order('sort_order', { ascending: true }),
         ]);
-        if (fpRes.error) console.error('[Projects] xray_unit_registry:', fpRes.error.message);
+        if (urRes.error) console.error('[Projects] xray_unit_registry:', urRes.error.message);
+        if (fpRes.error) console.error('[Projects] xray_floor_pricing:', fpRes.error.message);
         if (srRes.error) console.error('[Projects] xray_surroundings:', srRes.error.message);
-        if (pmRes.error) console.error('[Projects] xray_floor_pricing:', pmRes.error.message);
         if (ziRes.error) console.error('[Projects] xray_za_insights:', ziRes.error.message);
+        const urData = urRes.data || [];
+        setUnitRegistry(urData);
+        setFloorPricing(fpRes.data || []);
+        setSurroundings(srRes.data || []);
+        setZaInsights(ziRes.data || []);
+        // Set default floor and building from actual data
+        if (urData.length) {
+          const floors = [...new Set(urData.map((u: R) => u.floor))].filter((f: string) => /^\d+$/.test(f)).sort((a: string, b: string) => +a - +b);
+          setSelectedFloor(floors[Math.floor(floors.length / 2)] || floors[0] || null);
+          setSelectedBuilding(urData[0]?.building_number || null);
+        } else {
+          setSelectedFloor(null); setSelectedBuilding(null);
+        }
         console.log('[Projects] V3 data:', {
           project_id: sel.id, project_name: sel.project_name,
-          floorPlate: (fpRes.data || []).length, surroundings: (srRes.data || []).length,
-          priceModel: (pmRes.data || []).length, zaInsights: (ziRes.data || []).length,
+          unitRegistry: urData.length, floorPricing: (fpRes.data || []).length,
+          surroundings: (srRes.data || []).length, zaInsights: (ziRes.data || []).length,
         });
-        setFloorPlate(fpRes.data || []);
-        setSurroundings(srRes.data || []);
-        setPriceModel(pmRes.data || []);
-        setZaInsights(ziRes.data || []);
-        setFloor(Math.round((sel.total_floors || 20) / 2));
       } catch (e) {
         console.error('[Projects] Detail load error:', e);
       }
@@ -345,77 +320,94 @@ export function ProjectsPage() {
   const isApt = cat === 'apartment';
   const isVilla = cat === 'villa';
   const isOffplan = cat === 'off_plan';
-  const hasV3 = floorPlate.length > 0;
+  const hasRegistry = unitRegistry.length > 0;
+  const hasFloorPricing = floorPricing.length > 0;
   const hasInsights = zaInsights.length > 0;
   const hasSurroundings = surroundings.length > 0;
 
   // V3 surroundings type colors
   const surrTypeColor: Record<string, string> = {
-    premium: '#C9A84C', positive: '#27AE60', mixed: '#3498DB',
-    neutral: '#8892a4', caution: '#F39C12', negative: '#E74C3C',
+    premium: '#C9A84C', positive: '#34D399', mixed: '#60A5FA',
+    neutral: '#4a5168', caution: '#FBBF24', negative: '#F87171',
   };
 
-  // V3 orient score from surroundings type
-  const surrTypeScore: Record<string, number> = {
-    premium: 1, positive: 0.5, mixed: 0, neutral: -0.2, caution: -0.6, negative: -1,
-  };
-
-  // V3 unit data calc (price model + orient + floor)
-  function getUnitData(unit: R, fl: number) {
-    const pm = priceModel.find(p =>
-      p.unit_type === unit.unit_type ||
-      (unit.unit_type === '1BR' && p.unit_type === '1 B/R') ||
-      (unit.unit_type === '2BR' && p.unit_type === '2 B/R') ||
-      (unit.unit_type === '3BR' && p.unit_type === '3 B/R') ||
-      (unit.unit_type === 'Studio' && p.unit_type === 'Studio') ||
-      (unit.unit_type === '4BR' && p.unit_type === '4 B/R')
-    );
-    if (!pm) return null;
-    const surr = surroundings.find(s => s.direction === unit.orientation);
-    const orientScore = surr ? (surrTypeScore[surr.type] ?? 0) : 0;
-    const spreadHalf = ((pm.psf_high || 0) - (pm.psf_low || 0)) / 2;
-    const totalFloors = sel?.total_floors || 20;
-    const midFloor = Math.round(totalFloors / 2);
-    const psf = Math.round((pm.psf_mid || 0) + orientScore * spreadHalf + (fl - midFloor) * (pm.floor_adj_per_floor || 0));
-    const price = Math.round(psf * (unit.sqft || 0) / 1000) * 1000;
-    const rentBase = pm.rent_base_annual || 0;
-    const rent = Math.round(rentBase * (1 + orientScore * (pm.orient_rent_factor || 0.08) + (fl - midFloor) * (pm.floor_rent_factor || 0.005)) / 1000) * 1000;
-    const grossYield = price > 0 ? ((rent / price) * 100).toFixed(1) : '—';
-    return { psf, price, rent, grossYield, confidence: pm.confidence, source_txn_count: pm.source_txn_count, surr };
-  }
-
-  // V3 orient color for floor plate
-  const orientColors: Record<string, string> = {
-    N: '#3498DB', NE: '#2ECC71', E: '#F39C12', SE: '#C9A84C',
-    S: '#8E44AD', SW: '#E67E22', W: '#E74C3C', NW: '#95A5A6',
+  // V3 unit type colors for floor plate
+  const typeColor: Record<string, string> = {
+    '1 B/R': '#60A5FA', '2 B/R': '#A78BFA', '3 B/R': '#FBBF24',
+    '4 B/R': '#34D399', '5 B/R': '#F87171', 'Studio': '#8892a4',
   };
 
   // V3 confidence badge
   function ConfBadge({ confidence }: { confidence?: string }) {
-    if (confidence === 'verified') return <span style={{ fontSize: 9, color: '#27AE60' }}>🟢 VERIFIED</span>;
-    if (confidence === 'inferred') return <span style={{ fontSize: 9, color: '#F39C12' }}>🟡 INFERRED</span>;
-    return <span style={{ fontSize: 9, color: '#E74C3C' }}>🔴 ESTIMATED</span>;
+    if (confidence === 'verified') return <span style={{ fontSize: 9, color: '#34D399' }}>🟢 VERIFIED</span>;
+    if (confidence === 'inferred') return <span style={{ fontSize: 9, color: '#FBBF24' }}>🟡 INFERRED</span>;
+    return <span style={{ fontSize: 9, color: '#F87171' }}>🔴 ESTIMATED</span>;
   }
 
   // V3 insight type colors
   const insightTypeColor: Record<string, string> = {
-    price_spread: '#C9A84C', yield_signal: '#27AE60', sc_impact: '#E74C3C',
-    data_gap: '#95A5A6', orientation_premium: '#3498DB', rental_demand: '#8E44AD',
+    price_spread: '#F87171', yield_signal: '#34D399', sc_impact: '#FBBF24',
+    data_gap: '#4a5168', orientation_premium: '#C9A84C', rental_demand: '#60A5FA',
   };
+
+  // V3 floor plate: compute SVG positions for units on a floor
+  function getUnitLayout(floorUnits: R[]) {
+    const n = floorUnits.length;
+    if (!n) return [];
+    const cols = n <= 4 ? 2 : n <= 9 ? 3 : 4;
+    const rows = Math.ceil(n / cols);
+    const cellW = 90 / cols;
+    const cellH = 85 / rows;
+    return floorUnits.map((u, i) => ({
+      ...u,
+      _x: 5 + (i % cols) * cellW,
+      _y: 5 + Math.floor(i / cols) * cellH,
+      _w: cellW - 2,
+      _h: cellH - 2,
+    }));
+  }
+
+  // V3 floor pricing lookup for a unit
+  function getUnitPricing(unit: R) {
+    const floorNum = parseInt(unit.floor);
+    if (isNaN(floorNum)) return null;
+    const band = floorNum <= 10 ? '1-10' : floorNum <= 20 ? '11-20' : floorNum <= 30 ? '21-30' :
+      floorNum <= 40 ? '31-40' : floorNum <= 50 ? '41-50' : floorNum <= 60 ? '51-60' : '60+';
+    const pricing = floorPricing.find(fp => fp.rooms_en === unit.rooms_en && fp.floor_band === band);
+    if (!pricing) return null;
+    const estPrice = Math.round(pricing.avg_psf * (unit.area_sqft || 0) / 1000) * 1000;
+    const estPriceHigh = Math.round(pricing.max_psf * (unit.area_sqft || 0) / 1000) * 1000;
+    const estPriceLow = Math.round(pricing.min_psf * (unit.area_sqft || 0) / 1000) * 1000;
+    return {
+      avgPsf: pricing.avg_psf, minPsf: pricing.min_psf, maxPsf: pricing.max_psf,
+      estPrice, estPriceLow, estPriceHigh,
+      txnCount: pricing.txn_count, exactMatches: pricing.exact_matches,
+      confidence: pricing.confidence, floorBand: band,
+    };
+  }
+
+  // V3 derived data
+  const v3Floors = useMemo(() => [...new Set(unitRegistry.map(u => u.floor))].filter((f: string) => /^\d+$/.test(f)).sort((a: string, b: string) => +a - +b), [unitRegistry]);
+  const v3Buildings = useMemo(() => [...new Set(unitRegistry.map(u => u.building_number))].filter(Boolean).sort(), [unitRegistry]);
+  const floorUnits = useMemo(() => {
+    if (!selectedFloor) return [];
+    return unitRegistry.filter(u => u.floor === selectedFloor && (!selectedBuilding || u.building_number === selectedBuilding));
+  }, [unitRegistry, selectedFloor, selectedBuilding]);
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
-    { key: 'floorplate', label: 'Floor Plate' },
-    { key: 'surroundings', label: 'Surroundings' },
+    ...(hasRegistry ? [{ key: 'floorplate', label: 'Floor Plate' }] : []),
+    ...(hasFloorPricing ? [{ key: 'floorpricing', label: 'Floor Pricing' }] : []),
+    ...(hasSurroundings ? [{ key: 'surroundings', label: 'Surroundings' }] : []),
     { key: 'units', label: 'Units & Pricing' },
     ...(isApt || isOffplan ? [{ key: 'orientation', label: 'Orientation' }] : []),
     ...(isApt || isOffplan ? [{ key: 'viewblock', label: 'View Blocking' }] : []),
     ...(isVilla ? [{ key: 'community', label: 'Community Intel' }] : []),
-    ...(isOffplan ? [{ key: 'offplan', label: 'Construction Status' }] : []),
+    ...(isOffplan ? [{ key: 'offplan', label: 'Construction' }] : []),
     { key: 'evidence', label: 'DLD Evidence' },
     { key: 'rentals', label: 'Ejari Rentals' },
     { key: 'amenities', label: 'Amenities' },
-    { key: 'insights', label: hasInsights ? 'ZA Insights' : "What They Don't Tell You" },
+    ...(hasInsights ? [{ key: 'insights', label: 'ZA Insights' }] : [{ key: 'insights', label: "What They Don't Tell You" }]),
   ];
 
   return (
@@ -589,8 +581,12 @@ export function ProjectsPage() {
                               {u.view_type?.length > 0 && <div style={{ color: colors.gold }}>{u.view_type.join(' · ')}</div>}
                               {u.total_units_this_type && <div style={{ color: colors.textDim }}>{u.total_units_this_type} units</div>}
                               {(() => {
-                                const pm = priceModel.find(p => p.unit_type === u.unit_type || p.unit_type === u.unit_type?.replace(/(\d)BR/, '$1 B/R'));
-                                return pm ? <div style={{ color: colors.green, fontFamily: FONT_DATA }}>DLD: {fmt(pm.psf_low)}–{fmt(pm.psf_high)} PSF ({pm.source_txn_count} txns)</div> : null;
+                                const fp = floorPricing.filter(p => p.rooms_en === u.unit_type || p.rooms_en === u.unit_type?.replace(/(\d)BR/, '$1 B/R'));
+                                if (!fp.length) return null;
+                                const minPsf = Math.min(...fp.map((p: R) => p.min_psf || Infinity));
+                                const maxPsf = Math.max(...fp.map((p: R) => p.max_psf || 0));
+                                const txns = fp.reduce((a: number, p: R) => a + (p.txn_count || 0), 0);
+                                return <div style={{ color: colors.green, fontFamily: FONT_DATA }}>DLD: {fmt(minPsf)}–{fmt(maxPsf)} PSF ({txns} txns)</div>;
                               })()}
                             </div>
                           </PCard>
@@ -889,14 +885,14 @@ export function ProjectsPage() {
                   {/* EJARI RENTALS */}
                   {tab === 'rentals' && (
                     <div>
-                      <Section title="Ejari Rental Market" subtitle="gold.v_ejari_community_summary · Ejari median · 24mo" accent colors={colors}>
+                      <Section title="Ejari Rental Market" subtitle={`xray_ejari_summary · project_number: ${sel.rera_registration_no || 'not mapped'}`} accent colors={colors}>
                         {ejari.length === 0 ? (
-                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No Ejari rental data for {sel.master_community || 'this community'}</div></PCard>
+                          <PCard colors={colors}><div style={{ color: colors.textDim, textAlign: 'center', padding: 20 }}>No Ejari rental data for {sel.project_name || 'this project'} (rera: {sel.rera_registration_no || 'not mapped'})</div></PCard>
                         ) : ejari.map((r, i) => (
                           <PCard key={i} colors={colors} style={{ marginBottom: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                               <div>
-                                <span style={{ fontSize: 14, color: colors.text }}>{r.bedrooms}</span>
+                                <span style={{ fontSize: 14, color: colors.text }}>{r.unit_type || r.bedrooms}</span>
                                 <span style={{ fontSize: 11, color: colors.textDim, marginLeft: 8 }}>{r.contract_count} contracts</span>
                                 {r.new_contracts && <span style={{ fontSize: 10, color: colors.green, marginLeft: 8 }}>{r.new_contracts} new</span>}
                               </div>
@@ -905,19 +901,19 @@ export function ProjectsPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">MIN RENT</div>
-                                <div style={{ fontSize: 14, color: colors.red, marginTop: 2 }}>AED {fmt(r.min_rent_aed)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.red, marginTop: 2 }}>AED {fmt(r.min_rent_aed || r.min_rent)}/yr</div>
                               </div>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">MEDIAN RENT</div>
-                                <div style={{ fontSize: 14, color: colors.gold, marginTop: 2 }}>AED {fmt(r.median_rent_aed)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.gold, marginTop: 2 }}>AED {fmt(r.median_rent_aed || r.median_rent)}/yr</div>
                               </div>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">AVG RENT</div>
-                                <div style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>AED {fmt(r.avg_rent_aed)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.textSecondary, marginTop: 2 }}>AED {fmt(r.avg_rent_aed || r.avg_rent)}/yr</div>
                               </div>
                               <div style={{ padding: 8, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
                                 <div className="za-data-label">MAX RENT</div>
-                                <div style={{ fontSize: 14, color: colors.green, marginTop: 2 }}>AED {fmt(r.max_rent_aed)}/yr</div>
+                                <div style={{ fontSize: 14, color: colors.green, marginTop: 2 }}>AED {fmt(r.max_rent_aed || r.max_rent)}/yr</div>
                               </div>
                             </div>
                           </PCard>
@@ -983,58 +979,49 @@ export function ProjectsPage() {
                     </div>
                   )}
 
-                  {/* FLOOR PLATE (V3) */}
-                  {tab === 'floorplate' && !hasV3 && (
+                  {/* FLOOR PLATE (V3 — real DLD unit registry) */}
+                  {tab === 'floorplate' && hasRegistry && (() => {
+                    const laid = getUnitLayout(floorUnits);
+                    // Floor pricing for this floor
+                    const floorNum = parseInt(selectedFloor || '0');
+                    const band = floorNum <= 10 ? '1-10' : floorNum <= 20 ? '11-20' : floorNum <= 30 ? '21-30' :
+                      floorNum <= 40 ? '31-40' : floorNum <= 50 ? '41-50' : floorNum <= 60 ? '51-60' : '60+';
+                    const bandPricing = floorPricing.filter(fp => fp.floor_band === band);
+                    return (
                     <div>
-                      <Section title="Floor Plate" subtitle="V3 Building Intelligence" accent colors={colors}>
-                        <PCard colors={colors}>
-                          <div style={{ textAlign: 'center', padding: 32, color: colors.textDim }}>
-                            <div style={{ fontSize: 14, marginBottom: 8 }}>No floor plate data for this project</div>
-                            <div style={{ fontSize: 11, lineHeight: 1.6 }}>
-                              Table: <code>xray_unit_registry</code> · project_id: <code>{sel.id}</code><br />
-                              project_name: <code>{sel.project_name}</code><br />
-                              Check browser console for &quot;[Projects] V3 data&quot; log
-                            </div>
-                          </div>
-                        </PCard>
-                      </Section>
-                    </div>
-                  )}
-                  {tab === 'floorplate' && hasV3 && (
-                    <div>
-                      <Section title="Interactive Floor Plate" subtitle={`xray_unit_registry · ${floorPlate.length} units mapped · Floor ${floor}`} accent colors={colors}>
-                        {/* Color mode toggle */}
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                          {(['orient', 'price', 'yield'] as const).map(m => (
-                            <button key={m} onClick={() => setColorBy(m)} style={{
-                              padding: '5px 12px', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                              letterSpacing: 0.5, fontFamily: FONT_DATA,
-                              background: colorBy === m ? colors.goldBg : colors.cardBg,
-                              border: `1px solid ${colorBy === m ? colors.gold : colors.border}`,
-                              color: colorBy === m ? colors.gold : colors.textSecondary,
-                            }}>
-                              {m === 'orient' ? 'VIEW' : m === 'price' ? 'PRICE' : 'YIELD'}
-                            </button>
-                          ))}
-                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <ConfBadge confidence={floorPlate[0]?.confidence} />
-                            <span style={{ fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA }}>
-                              {priceModel.length > 0 ? `${priceModel.reduce((a, p) => a + (p.source_txn_count || 0), 0)} DLD txns` : ''}
-                            </span>
-                          </div>
+                      <Section title="Interactive Floor Plate" subtitle={`xray_unit_registry · ${unitRegistry.length} real DLD units · Floor ${selectedFloor || '—'}`} accent colors={colors}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                          <Badge color={colors.green} label="DLD GOVERNMENT DATA" />
+                          <span style={{ fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA }}>
+                            {unitRegistry.length} units across {v3Floors.length} floors{v3Buildings.length > 1 ? ` · ${v3Buildings.length} buildings` : ''}
+                          </span>
                         </div>
+                        {/* Building tabs */}
+                        {v3Buildings.length > 1 && (
+                          <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                            {v3Buildings.map(b => (
+                              <button key={b} onClick={() => setSelectedBuilding(b)} style={{
+                                padding: '5px 12px', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                                fontFamily: FONT_DATA, letterSpacing: 0.5,
+                                background: selectedBuilding === b ? colors.goldBg : colors.cardBg,
+                                border: `1px solid ${selectedBuilding === b ? colors.gold : colors.border}`,
+                                color: selectedBuilding === b ? colors.gold : colors.textSecondary,
+                              }}>BLDG {b}</button>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 12 }}>
                           {/* Floor selector */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', minWidth: 36 }}>
                             <div style={{ fontSize: 8, color: colors.textDim, fontFamily: FONT_DATA, marginBottom: 4 }}>FLOOR</div>
                             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 400 }}>
-                              {Array.from({ length: sel?.total_floors || 20 }, (_, i) => (sel?.total_floors || 20) - i).map(f => (
-                                <button key={f} onClick={() => setFloor(f)} style={{
+                              {[...v3Floors].reverse().map(f => (
+                                <button key={f} onClick={() => setSelectedFloor(f)} style={{
                                   width: 32, padding: '3px 0', fontSize: 9, fontFamily: FONT_DATA,
                                   textAlign: 'center', borderRadius: 3, cursor: 'pointer', border: 'none',
-                                  background: f === floor ? colors.gold : colors.cardBg,
-                                  color: f === floor ? colors.bg : colors.textSecondary,
-                                  fontWeight: f === floor ? 700 : 400,
+                                  background: f === selectedFloor ? colors.gold : colors.cardBg,
+                                  color: f === selectedFloor ? colors.bg : colors.textSecondary,
+                                  fontWeight: f === selectedFloor ? 700 : 400,
                                 }}>{f}</button>
                               ))}
                             </div>
@@ -1042,7 +1029,7 @@ export function ProjectsPage() {
                           {/* SVG floor plate */}
                           <div style={{ flex: 1, position: 'relative' }}>
                             <svg viewBox="0 0 106 94" style={{ width: '100%', background: isDark ? '#0a0b0f' : '#f5f5f0', borderRadius: 8, border: `1px solid ${colors.border}` }}>
-                              {/* Direction labels from surroundings */}
+                              {/* Direction labels */}
                               {surroundings.filter(s => ['N','S','E','W'].includes(s.direction)).map(s => {
                                 const pos: Record<string, {x: number; y: number}> = { N: {x:53,y:4}, S: {x:53,y:92}, E: {x:103,y:47}, W: {x:3,y:47} };
                                 const p = pos[s.direction] || {x:53,y:47};
@@ -1052,150 +1039,244 @@ export function ProjectsPage() {
                               <rect x={46} y={40} width={14} height={14} rx={2} fill={isDark ? '#1a1b22' : '#e0e0e0'} stroke={colors.border} strokeWidth={0.3} />
                               <text x={53} y={48} textAnchor="middle" fontSize="3" fill={colors.textDim}>CORE</text>
                               {/* Units */}
-                              {floorPlate.filter(u => floor >= (u.floor_range_from || 1) && floor <= (u.floor_range_to || 99)).map((u: R) => {
-                                const ud = getUnitData(u, floor);
-                                let fillColor = orientColors[u.orientation] || '#555';
-                                if (colorBy === 'price' && ud) {
-                                  const psfRange = priceModel.find(p => p.unit_type === u.unit_type || p.unit_type === u.unit_type.replace('BR', ' B/R'));
-                                  const psfMin = psfRange?.psf_low || 800;
-                                  const psfMax = psfRange?.psf_high || 2000;
-                                  const t = Math.min(1, Math.max(0, (ud.psf - psfMin) / (psfMax - psfMin)));
-                                  fillColor = t > 0.66 ? '#C9A84C' : t > 0.33 ? '#F39C12' : '#27AE60';
-                                } else if (colorBy === 'yield' && ud && ud.grossYield !== '—') {
-                                  const y = parseFloat(ud.grossYield);
-                                  fillColor = y >= 7 ? '#27AE60' : y >= 5 ? '#C9A84C' : '#E74C3C';
-                                }
-                                const isHov = hovered?.position_number === u.position_number;
+                              {laid.map((u: R) => {
+                                const fillColor = typeColor[u.rooms_en] || '#555';
+                                const isHov = hoveredUnit?.unit_number === u.unit_number;
                                 return (
-                                  <g key={u.position_number}
-                                    onMouseEnter={() => setHovered({ ...u, _ud: ud })}
-                                    onMouseLeave={() => setHovered(null)}
+                                  <g key={u.unit_number}
+                                    onMouseEnter={() => setHoveredUnit({ ...u, _pricing: getUnitPricing(u) })}
+                                    onMouseLeave={() => setHoveredUnit(null)}
                                     style={{ cursor: 'pointer' }}>
-                                    <rect x={u.x} y={u.y} width={u.w} height={u.h} rx={1}
+                                    <rect x={u._x} y={u._y} width={u._w} height={u._h} rx={1}
                                       fill={fillColor + (isHov ? 'FF' : '88')}
                                       stroke={isHov ? colors.gold : colors.border} strokeWidth={isHov ? 0.8 : 0.3} />
-                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 - 1.5} textAnchor="middle" fontSize="3" fontWeight="700" fill={isDark ? '#fff' : '#000'}>{u.unit_type}</text>
-                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 + 2} textAnchor="middle" fontSize="2.2" fill={isDark ? '#aaa' : '#666'}>{fmt(u.sqft)}sf</text>
-                                    <text x={u.x + u.w / 2} y={u.y + u.h / 2 + 4.5} textAnchor="middle" fontSize="2" fill={isDark ? '#888' : '#999'}>#{u.position_number}</text>
+                                    <text x={u._x + u._w / 2} y={u._y + u._h / 2 - 1.5} textAnchor="middle" fontSize="3" fontWeight="700" fill={isDark ? '#fff' : '#000'}>{u.rooms_en || '—'}</text>
+                                    <text x={u._x + u._w / 2} y={u._y + u._h / 2 + 2} textAnchor="middle" fontSize="2.2" fill={isDark ? '#aaa' : '#666'}>{fmt(u.area_sqft)}sf</text>
+                                    <text x={u._x + u._w / 2} y={u._y + u._h / 2 + 4.5} textAnchor="middle" fontSize="2" fill={isDark ? '#888' : '#999'}>{u.unit_number}</text>
                                   </g>
                                 );
                               })}
+                              {laid.length === 0 && (
+                                <text x={53} y={47} textAnchor="middle" fontSize="4" fill={colors.textDim}>No units on this floor</text>
+                              )}
                             </svg>
                             {/* Hover tooltip */}
-                            {hovered && (
+                            {hoveredUnit && (
                               <div style={{
                                 position: 'absolute', top: 8, right: 8, background: colors.surface,
                                 border: `1px solid ${colors.gold}`, borderRadius: 8, padding: 12,
-                                minWidth: 200, boxShadow: `0 4px 20px ${colors.bg}88`, zIndex: 10,
+                                minWidth: 220, boxShadow: `0 4px 20px ${colors.bg}88`, zIndex: 10,
                               }}>
                                 <div style={{ fontSize: 13, fontWeight: 600, color: colors.text, marginBottom: 6 }}>
-                                  {hovered.unit_type} · #{hovered.position_number}
+                                  Unit {hoveredUnit.unit_number} · {hoveredUnit.rooms_en}
                                 </div>
                                 <div style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
-                                  {fmt(hovered.sqft)} sqft · {hovered.orientation} facing
+                                  Floor {hoveredUnit.floor}{hoveredUnit.building_number ? ` · Building ${hoveredUnit.building_number}` : ''} · {fmt(hoveredUnit.area_sqft)} sqft
                                 </div>
-                                {hovered._ud?.surr && (
-                                  <div style={{ fontSize: 10, color: surrTypeColor[hovered._ud.surr.type] || colors.textDim, marginBottom: 6 }}>
-                                    {hovered._ud.surr.icon} {hovered._ud.surr.what}
-                                    {hovered._ud.surr.note && <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>{hovered._ud.surr.note}</div>}
-                                  </div>
-                                )}
-                                {hovered._ud ? (
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>PRICE</div>
-                                      <div style={{ fontSize: 12, color: colors.gold, fontWeight: 700, fontFamily: FONT_DATA }}>AED {fmtM(hovered._ud.price)}</div>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>{fmt(hovered._ud.psf)}/sqft</div>
+                                {hoveredUnit._pricing ? (
+                                  <div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+                                      <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                        <div style={{ fontSize: 8, color: colors.textDim }}>EST. PRICE</div>
+                                        <div style={{ fontSize: 12, color: colors.gold, fontWeight: 700, fontFamily: FONT_DATA }}>AED {fmtM(hoveredUnit._pricing.estPrice)}</div>
+                                        <div style={{ fontSize: 8, color: colors.textDim }}>{fmt(hoveredUnit._pricing.avgPsf)}/sqft</div>
+                                      </div>
+                                      <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
+                                        <div style={{ fontSize: 8, color: colors.textDim }}>PSF RANGE</div>
+                                        <div style={{ fontSize: 11, color: colors.textSecondary, fontFamily: FONT_DATA }}>{fmt(hoveredUnit._pricing.minPsf)} — {fmt(hoveredUnit._pricing.maxPsf)}</div>
+                                      </div>
                                     </div>
-                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>RENT</div>
-                                      <div style={{ fontSize: 12, color: colors.green, fontWeight: 700, fontFamily: FONT_DATA }}>AED {fmt(hovered._ud.rent)}/yr</div>
-                                    </div>
-                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>GROSS YIELD</div>
-                                      <div style={{ fontSize: 12, color: parseFloat(hovered._ud.grossYield) >= 6 ? colors.green : colors.orange, fontWeight: 700, fontFamily: FONT_DATA }}>{hovered._ud.grossYield}%</div>
-                                    </div>
-                                    <div style={{ padding: 6, background: colors.bg, borderRadius: 4, textAlign: 'center' }}>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>CONFIDENCE</div>
-                                      <ConfBadge confidence={hovered._ud.confidence} />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: colors.textDim }}>
+                                      <span>Floor band: {hoveredUnit._pricing.floorBand} · {hoveredUnit._pricing.txnCount} txns</span>
+                                      <ConfBadge confidence={hoveredUnit._pricing.confidence} />
                                     </div>
                                   </div>
                                 ) : (
-                                  <div style={{ fontSize: 10, color: colors.textDim }}>No price model for {hovered.unit_type}</div>
+                                  <div style={{ fontSize: 10, color: colors.textDim }}>No floor pricing data for {hoveredUnit.rooms_en}</div>
                                 )}
                               </div>
                             )}
                           </div>
                         </div>
+                        {/* Floor pricing for this band */}
+                        {bandPricing.length > 0 && (
+                          <div style={{ marginTop: 16 }}>
+                            <div style={{ fontSize: 10, color: colors.textDim, fontFamily: FONT_DATA, marginBottom: 8 }}>FLOOR BAND {band} PRICING</div>
+                            {bandPricing.map((fp, i) => (
+                              <PCard key={i} colors={colors} style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ width: 4, height: 20, borderRadius: 2, background: typeColor[fp.rooms_en] || colors.textDim }} />
+                                  <span style={{ fontSize: 13, color: colors.text }}>{fp.rooms_en}</span>
+                                  <span style={{ fontSize: 10, color: colors.textDim }}>{fp.txn_count} txns</span>
+                                  <ConfBadge confidence={fp.confidence} />
+                                </div>
+                                <div style={{ textAlign: 'right', fontFamily: FONT_DATA }}>
+                                  <div style={{ fontSize: 13, color: colors.gold }}>AED {fmt(fp.avg_psf)}/sqft</div>
+                                  <div style={{ fontSize: 9, color: colors.textDim }}>{fmt(fp.min_psf)} — {fmt(fp.max_psf)}</div>
+                                </div>
+                              </PCard>
+                            ))}
+                          </div>
+                        )}
                         {/* Legend */}
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, padding: '10px 0', borderTop: `1px solid ${colors.border}` }}>
-                          {colorBy === 'orient' && Object.entries(orientColors).map(([dir, col]) => (
-                            <div key={dir} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
-                              <div style={{ width: 10, height: 10, borderRadius: 2, background: col + '88' }} />{dir}
+                          {Object.entries(typeColor).map(([type, col]) => (
+                            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
+                              <div style={{ width: 10, height: 10, borderRadius: 2, background: col + '88' }} />{type}
                             </div>
                           ))}
-                          {colorBy === 'price' && ['Low PSF|#27AE60', 'Mid PSF|#F39C12', 'High PSF|#C9A84C'].map(s => {
-                            const [l, c] = s.split('|');
-                            return <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
-                              <div style={{ width: 10, height: 10, borderRadius: 2, background: c + '88' }} />{l}
-                            </div>;
-                          })}
-                          {colorBy === 'yield' && ['≥7% Yield|#27AE60', '5-7% Yield|#C9A84C', '<5% Yield|#E74C3C'].map(s => {
-                            const [l, c] = s.split('|');
-                            return <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: colors.textSecondary }}>
-                              <div style={{ width: 10, height: 10, borderRadius: 2, background: c + '88' }} />{l}
-                            </div>;
-                          })}
+                        </div>
+                        <div style={{ fontSize: 9, color: colors.textDim, marginTop: 6 }}>
+                          Source: DLD government unit registry. {unitRegistry.length} units mapped from official records.
                         </div>
                       </Section>
                     </div>
-                  )}
+                    );
+                  })()}
 
-                  {/* SURROUNDINGS (V3) */}
-                  {tab === 'surroundings' && !hasSurroundings && (
+                  {/* FLOOR PRICING (V3) */}
+                  {tab === 'floorpricing' && hasFloorPricing && (() => {
+                    // Group by rooms_en
+                    const roomTypes = [...new Set(floorPricing.map(fp => fp.rooms_en))].sort();
+                    const bandOrder = ['1-10','11-20','21-30','31-40','41-50','51-60','60+','unknown'];
+                    // Floor premium calc
+                    const lowBands = floorPricing.filter(fp => fp.floor_band === '1-10');
+                    const highBands = floorPricing.filter(fp => fp.floor_band === '41-50' || fp.floor_band === '51-60' || fp.floor_band === '60+');
+                    const lowAvg = lowBands.length ? lowBands.reduce((a, fp) => a + fp.avg_psf, 0) / lowBands.length : 0;
+                    const highAvg = highBands.length ? highBands.reduce((a, fp) => a + fp.avg_psf, 0) / highBands.length : 0;
+                    const floorPremium = lowAvg > 0 ? ((highAvg - lowAvg) / lowAvg * 100).toFixed(1) : null;
+                    const totalTxns = floorPricing.reduce((a, fp) => a + (fp.txn_count || 0), 0);
+                    const totalExact = floorPricing.reduce((a, fp) => a + (fp.exact_matches || 0), 0);
+                    return (
                     <div>
-                      <Section title="Surroundings" subtitle="V3 Building Intelligence" accent colors={colors}>
-                        <PCard colors={colors}>
-                          <div style={{ textAlign: 'center', padding: 32, color: colors.textDim }}>
-                            <div style={{ fontSize: 14, marginBottom: 8 }}>No surroundings data for this project</div>
-                            <div style={{ fontSize: 11 }}>
-                              Table: <code>xray_surroundings</code> · project_id: <code>{sel.id}</code>
+                      <Section title="Floor-Band Pricing" subtitle={`xray_floor_pricing · PSF by floor band from ${totalTxns} matched DLD transactions`} accent colors={colors}>
+                        {/* Headline stats */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
+                          <PCard colors={colors}>
+                            <div className="za-data-label">TOTAL TRANSACTIONS</div>
+                            <div className="za-data-value-lg" style={{ marginTop: 4 }}>{fmt(totalTxns)}</div>
+                          </PCard>
+                          <PCard colors={colors}>
+                            <div className="za-data-label">EXACT FLOOR MATCHES</div>
+                            <div className="za-data-value-lg" style={{ marginTop: 4 }}>{fmt(totalExact)}</div>
+                          </PCard>
+                          {floorPremium && (
+                            <PCard colors={colors}>
+                              <div className="za-data-label">HIGH vs LOW FLOOR PREMIUM</div>
+                              <div style={{ fontSize: 24, fontWeight: 300, color: colors.gold, marginTop: 4 }}>+{floorPremium}%</div>
+                            </PCard>
+                          )}
+                        </div>
+                        {/* PSF heatmap by room type and floor band */}
+                        {roomTypes.map(room => {
+                          const rows = floorPricing.filter(fp => fp.rooms_en === room).sort((a, b) => bandOrder.indexOf(a.floor_band) - bandOrder.indexOf(b.floor_band));
+                          const rc = typeColor[room] || colors.textDim;
+                          return (
+                            <div key={room} style={{ marginBottom: 16 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <div style={{ width: 4, height: 16, borderRadius: 2, background: rc }} />
+                                <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{room}</span>
+                                <span style={{ fontSize: 10, color: colors.textDim }}>{rows.reduce((a, r) => a + (r.txn_count || 0), 0)} txns</span>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(rows.length, 7)}, 1fr)`, gap: 4 }}>
+                                {rows.map((fp, i) => {
+                                  const maxPsfAll = Math.max(...floorPricing.filter(p => p.rooms_en === room).map(p => p.avg_psf || 0));
+                                  const minPsfAll = Math.min(...floorPricing.filter(p => p.rooms_en === room).map(p => p.avg_psf || Infinity));
+                                  const range = maxPsfAll - minPsfAll || 1;
+                                  const intensity = (fp.avg_psf - minPsfAll) / range;
+                                  return (
+                                    <PCard key={i} colors={colors} style={{
+                                      textAlign: 'center', padding: 8,
+                                      background: `${rc}${Math.round(10 + intensity * 30).toString(16).padStart(2, '0')}`,
+                                      border: `1px solid ${rc}44`,
+                                    }}>
+                                      <div style={{ fontSize: 8, color: colors.textDim, fontFamily: FONT_DATA }}>{fp.floor_band}</div>
+                                      <div style={{ fontSize: 14, fontWeight: 700, color: colors.text, fontFamily: FONT_DATA, marginTop: 2 }}>{fmt(Math.round(fp.avg_psf))}</div>
+                                      <div style={{ fontSize: 8, color: colors.textDim }}>PSF</div>
+                                      <div style={{ fontSize: 8, color: colors.textDim, marginTop: 2 }}>{fp.txn_count} txns</div>
+                                      <ConfBadge confidence={fp.confidence} />
+                                    </PCard>
+                                  );
+                                })}
+                              </div>
                             </div>
+                          );
+                        })}
+                        {/* Detailed table */}
+                        <div style={{ marginTop: 20 }}>
+                          <div style={{ fontSize: 10, color: colors.textDim, fontFamily: FONT_DATA, marginBottom: 8 }}>DETAILED BREAKDOWN</div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                              <thead>
+                                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                                  {['Type', 'Floor Band', 'Avg PSF', 'Min', 'Max', 'Avg Price', 'Txns', 'Exact', 'Confidence'].map(h => (
+                                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA, fontWeight: 600 }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {floorPricing.sort((a, b) => bandOrder.indexOf(a.floor_band) - bandOrder.indexOf(b.floor_band)).map((fp, i) => (
+                                  <tr key={i} style={{ borderBottom: `1px solid ${colors.border}22` }}>
+                                    <td style={{ padding: '5px 8px', color: typeColor[fp.rooms_en] || colors.text }}>{fp.rooms_en}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA }}>{fp.floor_band}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA, color: colors.gold }}>{fmt(Math.round(fp.avg_psf))}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA, color: colors.textDim }}>{fmt(Math.round(fp.min_psf))}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA, color: colors.textDim }}>{fmt(Math.round(fp.max_psf))}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA }}>{fmtM(Math.round(fp.avg_price))}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA }}>{fp.txn_count}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: FONT_DATA }}>{fp.exact_matches || 0}</td>
+                                    <td style={{ padding: '5px 8px' }}><ConfBadge confidence={fp.confidence} /></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                        </PCard>
+                        </div>
+                        <div style={{ fontSize: 9, color: colors.textDim, marginTop: 12, lineHeight: 1.5 }}>
+                          Computed from {totalTxns} DLD transactions matched to unit registry via area fingerprinting. {totalExact} exact floor matches.
+                        </div>
                       </Section>
                     </div>
-                  )}
+                    );
+                  })()}
+
+                  {/* SURROUNDINGS (V3 — 3x3 compass grid) */}
                   {tab === 'surroundings' && hasSurroundings && (
                     <div>
                       <Section title="8-Direction Surroundings" subtitle={`xray_surroundings · ${surroundings.length} directions mapped`} accent colors={colors}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                          {['N','NE','E','SE','S','SW','W','NW'].map(dir => {
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, maxWidth: 600, margin: '0 auto' }}>
+                          {['NW','N','NE','W','CENTER','E','SW','S','SE'].map(dir => {
+                            if (dir === 'CENTER') {
+                              return (
+                                <PCard key="CENTER" colors={colors} style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: colors.goldBg }}>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: colors.gold }}>{sel.project_name}</div>
+                                  <div style={{ fontSize: 10, color: colors.textDim, marginTop: 4 }}>
+                                    {sel.total_floors ? `${sel.total_floors} floors` : ''}{sel.total_units ? ` · ~${fmt(sel.total_units)} units` : ''}
+                                  </div>
+                                  {selectedFloor && <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2 }}>{floorUnits.length} units on F{selectedFloor}</div>}
+                                </PCard>
+                              );
+                            }
                             const s = surroundings.find(sr => sr.direction === dir);
                             if (!s) return (
-                              <PCard key={dir} colors={colors} style={{ opacity: 0.4 }}>
+                              <PCard key={dir} colors={colors} style={{ opacity: 0.3, textAlign: 'center', minHeight: 80, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                                 <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim }}>{dir}</div>
-                                <div style={{ fontSize: 10, color: colors.textDim }}>No data</div>
+                                <div style={{ fontSize: 9, color: colors.textDim }}>No data</div>
                               </PCard>
                             );
                             const tc = surrTypeColor[s.type] || colors.textDim;
                             return (
-                              <PCard key={dir} colors={colors} style={{ borderLeft: `3px solid ${tc}` }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <span style={{ fontSize: 18 }}>{s.icon || '📍'}</span>
-                                    <div>
-                                      <div style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{dir}</div>
-                                      <div style={{ fontSize: 10, color: colors.textDim }}>{s.label}</div>
-                                    </div>
-                                  </div>
+                              <PCard key={dir} colors={colors} style={{ borderTop: `3px solid ${tc}`, minHeight: 80 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                                  <span style={{ fontSize: 16 }}>{s.icon || '📍'}</span>
                                   <span style={{
-                                    fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 3,
+                                    fontSize: 7, fontWeight: 700, padding: '2px 5px', borderRadius: 3,
                                     background: tc + '20', color: tc, textTransform: 'uppercase',
                                   }}>{s.type}</span>
                                 </div>
-                                <div style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 1.5 }}>{s.what}</div>
-                                {s.note && <div style={{ fontSize: 10, color: colors.textDim, marginTop: 4, fontStyle: 'italic' }}>{s.note}</div>}
+                                <div style={{ fontSize: 12, fontWeight: 600, color: colors.text, marginBottom: 2 }}>{dir}</div>
+                                <div style={{ fontSize: 10, color: colors.textSecondary, lineHeight: 1.4 }}>{s.what}</div>
+                                {s.note && <div style={{ fontSize: 9, color: colors.textDim, marginTop: 3, fontStyle: 'italic' }}>{s.note}</div>}
                               </PCard>
                             );
                           })}
@@ -1320,8 +1401,10 @@ export function ProjectsPage() {
                             </div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
                               {ejari.map((e: R) => {
-                                const spread = e.max_rent_aed && e.min_rent_aed ? Math.round(((e.max_rent_aed - e.min_rent_aed) / e.min_rent_aed) * 100) : 0;
-                                return `${e.bedrooms}: AED ${fmt(e.min_rent_aed)} to ${fmt(e.max_rent_aed)}/yr (${spread}% spread across ${e.contract_count} contracts). `;
+                                const minR = e.min_rent_aed || e.min_rent || 0;
+                                const maxR = e.max_rent_aed || e.max_rent || 0;
+                                const spread = minR > 0 ? Math.round(((maxR - minR) / minR) * 100) : 0;
+                                return `${e.unit_type || e.bedrooms}: AED ${fmt(minR)} to ${fmt(maxR)}/yr (${spread}% spread across ${e.contract_count} contracts). `;
                               }).join('')}
                               The ONLY variables are floor and orientation. The unit you pick matters more than the building you pick.
                             </div>
