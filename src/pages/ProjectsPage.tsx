@@ -296,6 +296,14 @@ export function ProjectsPage() {
     })();
   }, [sel?.id]);
 
+  // V3 derived data (must be before early returns — React hooks rules)
+  const v3Floors = useMemo(() => [...new Set(unitRegistry.map(u => u.floor))].filter((f: string) => /^\d+$/.test(f)).sort((a: string, b: string) => +a - +b), [unitRegistry]);
+  const v3Buildings = useMemo(() => [...new Set(unitRegistry.map(u => u.building_number))].filter(Boolean).sort(), [unitRegistry]);
+  const floorUnits = useMemo(() => {
+    if (!selectedFloor) return [];
+    return unitRegistry.filter(u => u.floor === selectedFloor && (!selectedBuilding || u.building_number === selectedBuilding));
+  }, [unitRegistry, selectedFloor, selectedBuilding]);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center p-20" style={{ minHeight: '60vh' }}>
@@ -385,14 +393,6 @@ export function ProjectsPage() {
       confidence: pricing.confidence, floorBand: band,
     };
   }
-
-  // V3 derived data
-  const v3Floors = useMemo(() => [...new Set(unitRegistry.map(u => u.floor))].filter((f: string) => /^\d+$/.test(f)).sort((a: string, b: string) => +a - +b), [unitRegistry]);
-  const v3Buildings = useMemo(() => [...new Set(unitRegistry.map(u => u.building_number))].filter(Boolean).sort(), [unitRegistry]);
-  const floorUnits = useMemo(() => {
-    if (!selectedFloor) return [];
-    return unitRegistry.filter(u => u.floor === selectedFloor && (!selectedBuilding || u.building_number === selectedBuilding));
-  }, [unitRegistry, selectedFloor, selectedBuilding]);
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
