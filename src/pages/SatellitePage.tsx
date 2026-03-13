@@ -150,13 +150,21 @@ export function SatellitePage() {
           mapRef.current.flyTo({ center: [selCommunity.center_lng, selCommunity.center_lat], zoom: 14, duration: 1200 });
         }
 
+        // Log positioning stats
+        const unitFeatures = unitData?.features || [];
+        const positionedCount = unitFeatures.filter((f: R) => f.properties?.positioned).length;
         console.log('[Satellite] Loaded:', {
           community: mp,
-          units: (unitData?.features || []).length,
+          units: unitFeatures.length,
+          positioned: positionedCount,
+          unpositioned: unitFeatures.length - positionedCount,
           clusters: (clusterData?.features || []).length,
           transactions: (txnRes.data || []).length,
           phases: (phasesRes.data || []).length,
         });
+        if (unitFeatures.length > 0) {
+          console.log('[Satellite] Unit sample:', JSON.stringify(unitFeatures[0]?.properties, null, 2));
+        }
       } catch (e) {
         console.error('[Satellite] Detail load error:', e);
       }
@@ -468,6 +476,9 @@ export function SatellitePage() {
                 <div><span style={{ color: colors.gold, fontWeight: 700 }}>{fmt(filteredUnits.features.length)}</span> <span style={{ color: colors.textDim }}>units</span></div>
                 <div><span style={{ color: colors.gold, fontWeight: 700 }}>{phases.length}</span> <span style={{ color: colors.textDim }}>phases</span></div>
                 <div><span style={{ color: colors.gold, fontWeight: 700 }}>{transactions.length}</span> <span style={{ color: colors.textDim }}>txn rows</span></div>
+                {filteredUnits.features.some(f => f.properties?.positioned) && (
+                  <div><span style={{ color: '#34D399', fontWeight: 700 }}>{filteredUnits.features.filter(f => f.properties?.positioned).length}</span> <span style={{ color: colors.textDim }}>positioned</span></div>
+                )}
               </div>
               {selPhase && (
                 <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -560,6 +571,7 @@ export function SatellitePage() {
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 4, fontSize: 10, color: '#999' }}>
                     Phase: {popup.phase_name?.replace(/.*- ?/, '') || '—'}
                     {popup.dda_plot_number ? ` · Plot: ${popup.dda_plot_number}` : ''}
+                    {popup.positioned && <span style={{ color: '#34D399', marginLeft: 6 }}>● positioned</span>}
                   </div>
                 </div>
               </Popup>
