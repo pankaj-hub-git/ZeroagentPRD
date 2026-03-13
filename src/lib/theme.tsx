@@ -27,60 +27,105 @@ export interface ThemeColors {
   cardBg: string;
   cardBorder: string;
   cardHover: string;
+  // Opera Grand v2 extended tokens
+  elevated: string;
+  borderLit: string;
+  goldMuted: string;
+  goldFaint: string;
+  mint: string;
+  mintFaint: string;
+  coral: string;
+  coralFaint: string;
+  sky: string;
+  skyFaint: string;
+  amber: string;
+  amberFaint: string;
+  muted: string;
+  dim: string;
 }
 
 const DARK: ThemeColors = {
-  bg: '#0B0C10',
-  surface: '#111318',
-  border: '#1E2030',
-  text: '#E8E9ED',
-  textSecondary: '#8892A4',
-  textDim: '#4A4D6A',
+  bg: '#08090C',
+  surface: '#0F1117',
+  border: '#1C2030',
+  text: '#E2DFD8',
+  textSecondary: '#8890A0',
+  textDim: '#4A5068',
   gold: '#D4A843',
-  goldBg: 'rgba(212,168,67,0.08)',
-  green: '#2DD4A0',
-  greenBg: 'rgba(45,212,160,0.08)',
-  red: '#F06D5B',
-  redBg: 'rgba(240,109,91,0.08)',
-  blue: '#2E75B6',
-  blueBg: 'rgba(46,117,182,0.08)',
-  orange: '#F39C12',
-  orangeBg: 'rgba(243,156,18,0.08)',
+  goldBg: 'rgba(212,168,67,0.07)',
+  green: '#3EEBBE',
+  greenBg: 'rgba(62,235,190,0.07)',
+  red: '#FF6B6B',
+  redBg: 'rgba(255,107,107,0.06)',
+  blue: '#5BA4F5',
+  blueBg: 'rgba(91,164,245,0.06)',
+  orange: '#F0A830',
+  orangeBg: 'rgba(240,168,48,0.06)',
   indigo: '#7C83FE',
   indigoBg: 'rgba(124,131,254,0.08)',
   chartGrid: 'rgba(255,255,255,0.04)',
-  tooltipBg: '#111318',
-  tooltipBorder: '#1E2030',
-  cardBg: 'rgba(255,255,255,0.015)',
-  cardBorder: 'rgba(255,255,255,0.04)',
-  cardHover: 'rgba(255,255,255,0.03)',
+  tooltipBg: '#0F1117',
+  tooltipBorder: '#1C2030',
+  cardBg: '#141720',
+  cardBorder: '#1C2030',
+  cardHover: '#1A1E2A',
+  // Opera Grand v2 extended
+  elevated: '#1A1E2A',
+  borderLit: '#262C40',
+  goldMuted: '#A08030',
+  goldFaint: 'rgba(212,168,67,0.07)',
+  mint: '#3EEBBE',
+  mintFaint: 'rgba(62,235,190,0.07)',
+  coral: '#FF6B6B',
+  coralFaint: 'rgba(255,107,107,0.06)',
+  sky: '#5BA4F5',
+  skyFaint: 'rgba(91,164,245,0.06)',
+  amber: '#F0A830',
+  amberFaint: 'rgba(240,168,48,0.06)',
+  muted: '#4A5068',
+  dim: '#2C3248',
 };
 
 const LIGHT: ThemeColors = {
-  bg: '#F5F5F0',
+  bg: '#F7F6F3',
   surface: '#FFFFFF',
-  border: '#C8C4B8',
+  border: '#D5D0C8',
   text: '#1A1A1A',
-  textSecondary: '#444444',
-  textDim: '#777777',
-  gold: '#6B5518',
-  goldBg: 'rgba(107,85,24,0.12)',
-  green: '#1B8A6B',
-  greenBg: 'rgba(27,138,107,0.12)',
-  red: '#C0392B',
-  redBg: 'rgba(192,57,43,0.12)',
-  blue: '#2E75B6',
-  blueBg: 'rgba(46,117,182,0.12)',
-  orange: '#D4850A',
-  orangeBg: 'rgba(212,133,10,0.12)',
+  textSecondary: '#555555',
+  textDim: '#888888',
+  gold: '#8B6914',
+  goldBg: 'rgba(139,105,20,0.08)',
+  green: '#0E9B78',
+  greenBg: 'rgba(14,155,120,0.08)',
+  red: '#D94040',
+  redBg: 'rgba(217,64,64,0.06)',
+  blue: '#3B7DD8',
+  blueBg: 'rgba(59,125,216,0.06)',
+  orange: '#C88A10',
+  orangeBg: 'rgba(200,138,16,0.06)',
   indigo: '#5B61D6',
-  indigoBg: 'rgba(91,97,214,0.12)',
-  chartGrid: 'rgba(0,0,0,0.08)',
+  indigoBg: 'rgba(91,97,214,0.08)',
+  chartGrid: 'rgba(0,0,0,0.06)',
   tooltipBg: '#FFFFFF',
-  tooltipBorder: '#C8C4B8',
-  cardBg: 'rgba(0,0,0,0.03)',
-  cardBorder: 'rgba(0,0,0,0.08)',
-  cardHover: 'rgba(0,0,0,0.05)',
+  tooltipBorder: '#D5D0C8',
+  cardBg: '#F0EDE8',
+  cardBorder: '#D5D0C8',
+  cardHover: '#E8E4DE',
+  // Opera Grand v2 extended (light mode)
+  elevated: '#EDEAE4',
+  borderLit: '#C0BAB0',
+  goldMuted: '#9E7C28',
+  goldFaint: 'rgba(139,105,20,0.06)',
+  mint: '#0E9B78',
+  mintFaint: 'rgba(14,155,120,0.06)',
+  coral: '#D94040',
+  coralFaint: 'rgba(217,64,64,0.05)',
+  sky: '#3B7DD8',
+  skyFaint: 'rgba(59,125,216,0.05)',
+  amber: '#C88A10',
+  amberFaint: 'rgba(200,138,16,0.05)',
+  muted: '#999999',
+  dim: '#CCCCCC',
 };
 
 interface ThemeContextValue {
