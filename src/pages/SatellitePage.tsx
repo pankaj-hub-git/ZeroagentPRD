@@ -244,7 +244,7 @@ export function SatellitePage() {
         if (phasesRes.error) console.error('[Satellite] phase_summary:', phasesRes.error.message);
 
         setCommunityBoundary(boundaryRes.data || null);
-        setPhases(phasesRes.data || []);
+        setPhases(Array.isArray(phasesRes.data) ? phasesRes.data : []);
 
         // Fly to community
         if (boundaryRes.data?.center) {
@@ -329,7 +329,7 @@ export function SatellitePage() {
         ]);
         if (cancelled) return;
 
-        setAmenities(amenRes.data || []);
+        setAmenities(Array.isArray(amenRes.data) ? amenRes.data : []);
         setAmenityDelivery(deliveryRes.data || null);
 
         const ddaData = ddaRes.data;
@@ -389,8 +389,9 @@ export function SatellitePage() {
   /* ── Phase label GeoJSON ── */
   const phaseLabelGeoJSON = useMemo<GeoJSONFC>(() => {
     // Prefer boundary RPC phases (with center_lat/lng), fallback to phase summary
-    const phasePoints = communityBoundary?.phases?.filter((p: R) => p.center_lat && p.center_lng)
-      || phases.filter(p => p.center_lat && p.center_lng);
+    const bndPhases = Array.isArray(communityBoundary?.phases) ? communityBoundary.phases : [];
+    const phasePoints = (bndPhases.length > 0 ? bndPhases : phases)
+      .filter((p: R) => p.center_lat && p.center_lng);
     return {
       type: 'FeatureCollection',
       features: phasePoints.map((p: R) => ({
@@ -440,7 +441,8 @@ export function SatellitePage() {
   /* ── Amenity delivery GeoJSON (from villa_amenity_gee via mapLayerBundle) ── */
   const amenityPointsGeoJSON = useMemo<GeoJSONFC>(() => {
     // Build from map layer bundle amenities
-    const amenList = mapLayerBundle?.amenities || [];
+    const raw = mapLayerBundle?.amenities;
+    const amenList = Array.isArray(raw) ? raw : [];
     return {
       type: 'FeatureCollection',
       features: amenList
@@ -466,7 +468,8 @@ export function SatellitePage() {
 
   /* ── Amenity polygons GeoJSON ── */
   const amenityPolygonsGeoJSON = useMemo<GeoJSONFC>(() => {
-    const polyList = mapLayerBundle?.amenity_polygons || [];
+    const rawPolys = mapLayerBundle?.amenity_polygons;
+    const polyList = Array.isArray(rawPolys) ? rawPolys : [];
     return {
       type: 'FeatureCollection',
       features: polyList
@@ -481,7 +484,8 @@ export function SatellitePage() {
 
   /* ── Signature amenities GeoJSON ── */
   const signatureGeoJSON = useMemo<GeoJSONFC>(() => {
-    const sigs = mapLayerBundle?.signature_amenities || [];
+    const rawSigs = mapLayerBundle?.signature_amenities;
+    const sigs = Array.isArray(rawSigs) ? rawSigs : [];
     return {
       type: 'FeatureCollection',
       features: sigs
@@ -510,12 +514,14 @@ export function SatellitePage() {
 
   /* ── Delivery phase data (from amenity delivery RPC) ── */
   const deliveryPhases = useMemo(() => {
-    return (amenityDelivery?.by_phase || []).sort((a: R, b: R) => (b.delivery_pct || 0) - (a.delivery_pct || 0));
+    const bp = amenityDelivery?.by_phase;
+    return (Array.isArray(bp) ? bp : []).sort((a: R, b: R) => (b.delivery_pct || 0) - (a.delivery_pct || 0));
   }, [amenityDelivery]);
 
   /* ── Delivery by class ── */
   const deliveryByClass = useMemo(() => {
-    return amenityDelivery?.by_class || [];
+    const bc = amenityDelivery?.by_class;
+    return Array.isArray(bc) ? bc : [];
   }, [amenityDelivery]);
 
   /* ── Map click handler ── */
@@ -752,7 +758,7 @@ export function SatellitePage() {
                     }}>{c.readiness}</span>
                   </div>
                   <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2, fontFamily: FONT_DATA }}>
-                    {fmt(c.total_units)} units · {c.phases} phases · {c.villa_types} types
+                    {fmt(c.total_units)} units · {fmt(c.phases)} phases · {fmt(c.villa_types)} types
                   </div>
                 </div>
               );
@@ -1360,7 +1366,7 @@ export function SatellitePage() {
                     </div>
                   )}
                   <div style={{ fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA }}>
-                    {fmt(p.total_units)} units · {p.villa_types} types
+                    {fmt(p.total_units)} units · {fmt(p.villa_types)} types
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                     {p.br3 > 0 && <span style={{ fontSize: 8, color: BR_COLORS[3] }}>{p.br3}×3BR</span>}
