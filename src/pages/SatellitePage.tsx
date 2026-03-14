@@ -205,23 +205,18 @@ export function SatellitePage() {
     })();
   }, []);
 
-  /* ── Phased community data loading ──
-     Phase 1: boundary + phases (small, needed for flyTo + phase cards)
-     Phase 2: villa units + clusters (core map layers)
-     Phase 3: amenities + delivery + DDA + map layer bundle (overlays)
-     Phase 4: transactions, demographics, gee (on-demand when layer toggled)
-  */
+  /* ── Step 1: Community selected → load ONLY boundary + phase list (lightweight) ── */
   const loadedCommunityRef = useRef<string | null>(null);
+  const [phaseLoading, setPhaseLoading] = useState(false);
 
   useEffect(() => {
     if (!selCommunity) return;
     const mp = selCommunity.masterplan;
-    const communityKey = COMMUNITY_KEY[mp];
     let cancelled = false;
 
-    // Reset state
+    // Reset everything
     loadedCommunityRef.current = mp;
-    setDetailLoading(true);
+    setPhaseLoading(true);
     setSelPhase(null);
     setPopup(null);
     setVillaUnits(null);
@@ -235,11 +230,11 @@ export function SatellitePage() {
     setDdaPolygons(null);
     setCommunityBoundary(null);
     setMapLayerBundle(null);
+    setDetailLoading(false);
 
     (async () => {
       try {
-        // ── Phase 1: Boundary + Phase summary (small, fast — needed for flyTo) ──
-        console.log('[Satellite] Phase 1: loading boundary + phases for', mp);
+        console.log('[Satellite] Loading boundary + phases for', mp);
         const [boundaryRes, phasesRes] = await Promise.all([
           sb.rpc('satellite_get_community_boundary', { p_community: mp }),
           sb.rpc('satellite_get_phase_summary', { p_masterplan: mp }),
@@ -251,7 +246,7 @@ export function SatellitePage() {
         setCommunityBoundary(boundaryRes.data || null);
         setPhases(phasesRes.data || []);
 
-        // Fly to community immediately
+        // Fly to community
         if (boundaryRes.data?.center) {
           const c = boundaryRes.data.center;
           mapRef.current?.flyTo({ center: [c.lng, c.lat], zoom: 13.5, duration: 1200 });
@@ -264,8 +259,37 @@ export function SatellitePage() {
           mapRef.current.flyTo({ center: [selCommunity.center_lng, selCommunity.center_lat], zoom: 14, duration: 1200 });
         }
 
-        // ── Phase 2: Villa units + cluster polygons (core map data) ──
-        console.log('[Satellite] Phase 2: loading units + clusters for', mp);
+        console.log('[Satellite] Phases loaded:', (phasesRes.data || []).length, '— waiting for user to select a phase');
+      } catch (e) {
+        console.error('[Satellite] Phase list load error:', e);
+      }
+      setPhaseLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [selCommunity?.masterplan]);
+
+  /* ── Step 2: Phase selected → load heavy data for that community ── */
+  const loadedPhaseRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!selCommunity || !selPhase) return;
+    const mp = selCommunity.masterplan;
+    const communityKey = COMMUNITY_KEY[mp];
+    const phaseKey = `${mp}__${selPhase}`;
+
+    // Don't re-load if same phase already loaded
+    if (loadedPhaseRef.current === phaseKey) return;
+    loadedPhaseRef.current = phaseKey;
+
+    let cancelled = false;
+    setDetailLoading(true);
+    setPopup(null);
+
+    (async () => {
+      try {
+        // Load units + clusters (core map data)
+        console.log('[Satellite] Loading data for phase:', selPhase);
         const [unitsRes, clustersRes] = await Promise.all([
           sb.rpc('satellite_get_villa_units', { p_masterplan: mp }),
           sb.rpc('satellite_get_cluster_polygons', { p_masterplan: mp }),
@@ -281,19 +305,16 @@ export function SatellitePage() {
         setClusterPolygons(clusterData && typeof clusterData === 'object' && clusterData.type === 'FeatureCollection'
           ? clusterData : { type: 'FeatureCollection', features: Array.isArray(clusterData) ? clusterData : [] });
 
-        // Phase 1+2 done — map is usable, clear main loading indicator
         setDetailLoading(false);
 
         const unitFeatures = unitData?.features || [];
-        console.log('[Satellite] Phase 2 done:', {
+        console.log('[Satellite] Core loaded:', {
           units: unitFeatures.length,
           positioned: unitFeatures.filter((f: R) => f.properties?.positioned).length,
           clusters: (clusterData?.features || []).length,
-          phases: (phasesRes.data || []).length,
         });
 
-        // ── Phase 3: Amenities + delivery + DDA + map layers (overlays, non-blocking) ──
-        console.log('[Satellite] Phase 3: loading amenities + delivery + DDA for', mp);
+        // Then load overlays (non-blocking)
         const [amenRes, deliveryRes, ddaRes, mapLayerRes] = await Promise.all([
           sb.rpc('satellite_get_amenities', { p_masterplan: mp }),
           sb.rpc('satellite_get_amenity_delivery', { p_community: mp }),
@@ -303,9 +324,6 @@ export function SatellitePage() {
             : Promise.resolve({ data: null, error: null }),
         ]);
         if (cancelled) return;
-        if (amenRes.error) console.error('[Satellite] amenities:', amenRes.error.message);
-        if (deliveryRes.error) console.error('[Satellite] amenity_delivery:', deliveryRes.error.message);
-        if (ddaRes.error) console.error('[Satellite] dda_polygons:', ddaRes.error.message);
 
         setAmenities(amenRes.data || []);
         setAmenityDelivery(deliveryRes.data || null);
@@ -313,16 +331,9 @@ export function SatellitePage() {
         const ddaData = ddaRes.data;
         setDdaPolygons(ddaData && typeof ddaData === 'object' && ddaData.type === 'FeatureCollection'
           ? ddaData : ddaData ? { type: 'FeatureCollection', features: Array.isArray(ddaData) ? ddaData : [] } : null);
-
         setMapLayerBundle(mapLayerRes.data || null);
 
-        console.log('[Satellite] Phase 3 done:', {
-          amenities: (amenRes.data || []).length,
-          amenityDelivery: deliveryRes.data ? `${deliveryRes.data?.summary?.delivered || 0} delivered` : 'none',
-          ddaPlots: (ddaData?.features || []).length,
-          mapLayerAmenities: mapLayerRes.data?.amenity_count || 0,
-        });
-
+        console.log('[Satellite] Overlays loaded');
       } catch (e) {
         console.error('[Satellite] Detail load error:', e);
         setDetailLoading(false);
@@ -330,13 +341,11 @@ export function SatellitePage() {
     })();
 
     return () => { cancelled = true; };
-  }, [selCommunity?.masterplan]);
+  }, [selPhase, selCommunity?.masterplan]);
 
-  /* ── Phase 4: On-demand loading for transactions, demographics, gee ──
-     Only fetched when the user toggles the corresponding layer ON */
+  /* ── On-demand: transactions, demographics, gee (only when layer toggled ON) ── */
   useEffect(() => {
-    if (!selCommunity || !layers.transactions || transactions.length > 0) return;
-    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    if (!selCommunity || !selPhase || !layers.transactions || transactions.length > 0) return;
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading transactions for', mp);
     (async () => {
@@ -344,11 +353,10 @@ export function SatellitePage() {
       if (res.error) console.error('[Satellite] transactions:', res.error.message);
       if (loadedCommunityRef.current === mp) setTransactions(res.data || []);
     })();
-  }, [layers.transactions, selCommunity?.masterplan]);
+  }, [layers.transactions, selPhase, selCommunity?.masterplan]);
 
   useEffect(() => {
-    if (!selCommunity || !layers.demographics || demographics.length > 0) return;
-    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    if (!selCommunity || !selPhase || !layers.demographics || demographics.length > 0) return;
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading demographics for', mp);
     (async () => {
@@ -356,11 +364,10 @@ export function SatellitePage() {
       if (res.error) console.error('[Satellite] demographics:', res.error.message);
       if (loadedCommunityRef.current === mp) setDemographics(res.data || []);
     })();
-  }, [layers.demographics, selCommunity?.masterplan]);
+  }, [layers.demographics, selPhase, selCommunity?.masterplan]);
 
   useEffect(() => {
-    if (!selCommunity || !layers.gee || geeStatus.length > 0) return;
-    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    if (!selCommunity || !selPhase || !layers.gee || geeStatus.length > 0) return;
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading GEE status for', mp);
     (async () => {
@@ -368,7 +375,7 @@ export function SatellitePage() {
       if (res.error) console.error('[Satellite] gee_status:', res.error.message);
       if (loadedCommunityRef.current === mp) setGeeStatus(res.data || []);
     })();
-  }, [layers.gee, selCommunity?.masterplan]);
+  }, [layers.gee, selPhase, selCommunity?.masterplan]);
 
   /* ── Toggle layer ── */
   const toggleLayer = useCallback((key: LayerKey) => {
@@ -740,7 +747,26 @@ export function SatellitePage() {
             })}
           </div>
 
-          {/* Sidebar Tab Switcher */}
+          {/* Prompt to select community/phase */}
+          {!selCommunity && (
+            <div style={{ padding: 24, textAlign: 'center', color: colors.textDim, fontSize: 11 }}>
+              Select a community above to get started
+            </div>
+          )}
+          {selCommunity && !selPhase && !phaseLoading && phases.length > 0 && (
+            <div style={{ padding: 24, textAlign: 'center', color: colors.textDim, fontSize: 11 }}>
+              Select a phase from the bottom bar to load data
+            </div>
+          )}
+          {phaseLoading && (
+            <div style={{ padding: 24, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Loader2 className="animate-spin" size={14} style={{ color: colors.gold }} />
+              <span style={{ fontSize: 11, color: colors.gold }}>Loading phases...</span>
+            </div>
+          )}
+
+          {/* Sidebar Tab Switcher + content — only after phase selected */}
+          {selPhase && (<>
           <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
             {([['delivery', 'Delivery'], ['layers', 'Layers'], ['data', 'Data']] as const).map(([k, l]) => (
               <button key={k} onClick={() => setSidebarTab(k)}
@@ -1014,6 +1040,7 @@ export function SatellitePage() {
               )}
             </>
           )}
+          </>)}
         </div>
       )}
 
@@ -1038,7 +1065,30 @@ export function SatellitePage() {
             }}>
               <MapPin size={24} style={{ color: colors.gold, marginBottom: 8 }} />
               <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 4 }}>Select a Community</div>
-              <div style={{ fontSize: 11, color: colors.textDim }}>Choose a villa community from the sidebar to load its data</div>
+              <div style={{ fontSize: 11, color: colors.textDim }}>Choose a villa community from the sidebar</div>
+            </div>
+          )}
+
+          {selCommunity && !selPhase && !phaseLoading && phases.length > 0 && (
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10,
+              background: isDark ? '#0c0d14ee' : '#f5f5f0ee', borderRadius: 8,
+              padding: '24px 32px', border: `1px solid ${colors.border}`, textAlign: 'center',
+            }}>
+              <Satellite size={24} style={{ color: colors.gold, marginBottom: 8 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 4 }}>Select a Phase</div>
+              <div style={{ fontSize: 11, color: colors.textDim }}>Pick a phase from the bottom bar to load map data</div>
+            </div>
+          )}
+
+          {phaseLoading && (
+            <div style={{
+              position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+              background: colors.surface, border: `1px solid ${colors.gold}`, borderRadius: 6,
+              padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <Loader2 className="animate-spin" size={14} style={{ color: colors.gold }} />
+              <span style={{ fontSize: 11, color: colors.gold }}>Loading phases for {selCommunity?.masterplan}...</span>
             </div>
           )}
 
