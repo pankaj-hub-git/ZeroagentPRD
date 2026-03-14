@@ -273,7 +273,11 @@ export function SatellitePage() {
   const loadedPhaseRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!selCommunity || !selPhase) return;
+    if (!selCommunity || !selPhase) {
+      // Reset so re-selecting same phase will reload
+      if (!selPhase) loadedPhaseRef.current = null;
+      return;
+    }
     const mp = selCommunity.masterplan;
     const communityKey = COMMUNITY_KEY[mp];
     const phaseKey = `${mp}__${selPhase}`;
@@ -519,9 +523,17 @@ export function SatellitePage() {
     if (!mapRef.current) return;
     const map = mapRef.current.getMap();
 
+    // Safely query only layers that exist on the map
+    const safeQuery = (layerId: string) => {
+      try {
+        if (!map.getLayer(layerId)) return [];
+        return map.queryRenderedFeatures(e.point, { layers: [layerId] }) || [];
+      } catch { return []; }
+    };
+
     // Check amenity points first
-    const amenFeatures = map.queryRenderedFeatures(e.point, { layers: ['amenity-points-layer'] });
-    if (amenFeatures?.length) {
+    const amenFeatures = safeQuery('amenity-points-layer');
+    if (amenFeatures.length) {
       const f = amenFeatures[0];
       const props = f.properties || {};
       const coords = (f.geometry as any)?.coordinates; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -535,8 +547,8 @@ export function SatellitePage() {
     }
 
     // Check DDA plots
-    const ddaFeatures = map.queryRenderedFeatures(e.point, { layers: ['dda-plot-fill'] });
-    if (ddaFeatures?.length) {
+    const ddaFeatures = safeQuery('dda-plot-fill');
+    if (ddaFeatures.length) {
       const f = ddaFeatures[0];
       const props = f.properties || {};
       setPopup({
@@ -549,7 +561,7 @@ export function SatellitePage() {
     }
 
     // Check villa units
-    const features = map.queryRenderedFeatures(e.point, { layers: ['villa-units-layer'] });
+    const features = safeQuery('villa-units-layer');
     if (features?.length) {
       const f = features[0];
       const props = f.properties || {};
@@ -685,14 +697,14 @@ export function SatellitePage() {
     paint: { 'text-color': '#C9A84C', 'text-halo-color': '#000', 'text-halo-width': 1 },
   };
 
-  // Interactive layers for click
+  // Interactive layers for click — only include IDs when data is actually rendered
   const interactiveLayers = useMemo(() => {
     const ids: string[] = [];
-    if (layers.units) ids.push('villa-units-layer');
-    if (layers.amenityPoints) ids.push('amenity-points-layer');
-    if (layers.ddaPlots) ids.push('dda-plot-fill');
+    if (layers.units && villaUnits && villaUnits.features.length > 0) ids.push('villa-units-layer');
+    if (layers.amenityPoints && amenityPointsGeoJSON.features.length > 0) ids.push('amenity-points-layer');
+    if (layers.ddaPlots && ddaPolygons && ddaPolygons.features.length > 0) ids.push('dda-plot-fill');
     return ids;
-  }, [layers.units, layers.amenityPoints, layers.ddaPlots]);
+  }, [layers.units, layers.amenityPoints, layers.ddaPlots, villaUnits, amenityPointsGeoJSON, ddaPolygons]);
 
   /* ── Delivery summary ── */
   const deliverySummary = amenityDelivery?.summary;
