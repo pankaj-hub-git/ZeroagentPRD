@@ -198,7 +198,6 @@ export function SatellitePage() {
         const { data, error } = await sb.rpc('satellite_list_communities');
         if (error) console.error('[Satellite] list_communities:', error.message);
         setCommunities(data || []);
-        if (data?.length) setSelCommunity(data[0]);
       } catch (e) {
         console.error('[Satellite] Failed to load communities:', e);
       }
@@ -1031,6 +1030,18 @@ export function SatellitePage() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
         {/* MAP */}
         <div style={{ flex: 1, position: 'relative' }}>
+          {!selCommunity && !loadingList && (
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10,
+              background: isDark ? '#0c0d14ee' : '#f5f5f0ee', borderRadius: 8,
+              padding: '24px 32px', border: `1px solid ${colors.border}`, textAlign: 'center',
+            }}>
+              <MapPin size={24} style={{ color: colors.gold, marginBottom: 8 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginBottom: 4 }}>Select a Community</div>
+              <div style={{ fontSize: 11, color: colors.textDim }}>Choose a villa community from the sidebar to load its data</div>
+            </div>
+          )}
+
           {detailLoading && (
             <div style={{
               position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
