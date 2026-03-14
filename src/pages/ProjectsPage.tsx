@@ -57,8 +57,8 @@ function ProjectSidebar({ projects, sel, onSelect, enrichmentMap }: {
 }) {
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
-  const catColor = (c: string) => c === 'apartment' ? colors.blue : c === 'villa' ? colors.green : c === 'off_plan' ? colors.amber : colors.muted;
-  const catLabel: Record<string, string> = { apartment: 'APT', villa: 'VILLA', off_plan: 'OFF-PLAN' };
+  const catColor = (c: string) => c === 'apartment' ? colors.blue : c === 'off_plan' ? colors.amber : colors.muted;
+  const catLabel: Record<string, string> = { apartment: 'APT', off_plan: 'OFF-PLAN' };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return projects;
@@ -195,9 +195,10 @@ export function ProjectsPage() {
       try {
         const [projRes, enrichRes] = await Promise.all([
           sb.from('xray_projects').select('*')
+            .in('project_category', ['apartment', 'off_plan'])
+            .eq('enrichment_status', 'complete')
             .not('avg_price_per_sqft', 'is', null)
-            .order('avg_price_per_sqft', { ascending: false })
-            .limit(300),
+            .order('avg_price_per_sqft', { ascending: false }),
           sb.from('xray_enrichment_tracker').select('*'),
         ]);
         if (projRes.error) { console.error('[Projects] xray_projects error:', projRes.error.message); setError(projRes.error.message); }
@@ -269,13 +270,12 @@ export function ProjectsPage() {
           setViewBlocking(vb || []);
         } else { setViewBlocking([]); }
 
-        // Batch 3: V3 tables
-        const [fpRes, srRes, ziRes] = await Promise.all([
-          sb.from('xray_floor_pricing').select('*').eq('project_id', sel.id).order('rooms_en').order('floor_band'),
+        // Batch 3: V3 tables (xray_floor_pricing removed — never created)
+        const [srRes, ziRes] = await Promise.all([
           sb.from('xray_surroundings').select('*').eq('project_id', sel.id).order('direction'),
           sb.from('xray_za_insights').select('*').eq('project_id', sel.id).order('sort_order'),
         ]);
-        setFloorPricing(fpRes.data || []); setSurroundings(srRes.data || []);
+        setFloorPricing([]); setSurroundings(srRes.data || []);
         setZaInsights(ziRes.data || []);
 
         // Batch 4: Community-level
@@ -338,15 +338,13 @@ export function ProjectsPage() {
 
   const cat = sel?.project_category;
   const isApt = cat === 'apartment';
-  const isVilla = cat === 'villa';
   const isOffplan = cat === 'off_plan';
   const hasMatrix = floorUnitMatrix.length > 0;
-  const hasFloorPricing = floorPricing.length > 0;
   const hasInsights = zaInsights.length > 0;
   const hasSurroundings = surroundings.length > 0;
   const hasOrientation = orientationData.length > 0;
 
-  const catColorFn = (c: string) => c === 'apartment' ? colors.blue : c === 'villa' ? colors.green : c === 'off_plan' ? colors.amber : colors.muted;
+  const catColorFn = (c: string) => c === 'apartment' ? colors.blue : c === 'off_plan' ? colors.amber : colors.muted;
 
   const typeColor: Record<string, string> = {
     '1 B/R': colors.blue, '2 B/R': colors.indigo, '3 B/R': colors.amber,
@@ -381,7 +379,7 @@ export function ProjectsPage() {
     ...(buildingShape.length > 0 ? [{ key: 'buildingdna', label: 'Building DNA' }] : []),
     ...(hasMatrix ? [{ key: 'floorplate', label: 'Floor Plate' }] : []),
     { key: 'units', label: 'Unit Types' },
-    ...(hasFloorPricing || priceModel.length > 0 ? [{ key: 'floorpricing', label: 'Floor Pricing' }] : []),
+    ...(priceModel.length > 0 || dldSummary.length > 0 ? [{ key: 'floorpricing', label: 'Floor Pricing' }] : []),
     ...(hasOrientation ? [{ key: 'orientation', label: 'Orientation' }] : []),
     ...(serviceCharges.length > 0 ? [{ key: 'servicecharges', label: 'Service Charges' }] : []),
     ...(paymentPlan.length > 0 ? [{ key: 'paymentplan', label: 'Payment Plan' }] : []),
@@ -391,7 +389,6 @@ export function ProjectsPage() {
     ...(amenities.length > 0 ? [{ key: 'amenities', label: 'Amenities' }] : []),
     ...(infra.length > 0 ? [{ key: 'infra', label: 'Infrastructure' }] : []),
     ...(hasSurroundings ? [{ key: 'surroundings', label: 'Surroundings' }] : []),
-    ...(isVilla ? [{ key: 'community', label: 'Community' }] : []),
     ...(isOffplan ? [{ key: 'offplan', label: 'Construction' }] : []),
     { key: 'insights', label: hasInsights ? 'ZA Insights' : "What They Don't Tell You" },
   ];
@@ -417,7 +414,7 @@ export function ProjectsPage() {
                   </button>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12, marginTop: 24 }}>
-                  <Tag color={catColorFn(cat)}>{cat === 'apartment' ? 'APT' : cat === 'villa' ? 'VILLA' : cat === 'off_plan' ? 'OFF-PLAN' : cat}</Tag>
+                  <Tag color={catColorFn(cat)}>{cat === 'apartment' ? 'APT' : cat === 'off_plan' ? 'OFF-PLAN' : cat}</Tag>
                   {sel.sc_source && <Tag color={scSourceColors[sel.sc_source as keyof typeof scSourceColors] || colors.muted}>{sel.sc_source === 'mollak_confirmed' ? 'MOLLAK SC' : sel.sc_source === 'rera_estimate' ? 'RERA SC' : sel.sc_source?.replace(/_/g, ' ').toUpperCase()}</Tag>}
                   {sel.enrichment_status === 'complete' && <Tag color={colors.green}>ENRICHED</Tag>}
                 </div>
@@ -728,99 +725,104 @@ export function ProjectsPage() {
                     </div>
                   )}
 
-                  {/* ═══ FLOOR PRICING TAB ═══ */}
-                  {tab === 'floorpricing' && (hasFloorPricing || priceModel.length > 0) && (() => {
-                    const pricingSource = floorPricing.length > 0 ? floorPricing : [];
-                    const roomTypes = [...new Set(pricingSource.map(fp => fp.rooms_en))].sort();
-                    const bandOrder = ['1-10','11-20','21-30','31-40','41-50','51-60','60+','unknown'];
-                    const totalTxns = pricingSource.reduce((a, fp) => a + (fp.txn_count || 0), 0);
-                    const totalExact = pricingSource.reduce((a, fp) => a + (fp.exact_matches || 0), 0);
-                    // Floor premium calc
-                    const lowBands = pricingSource.filter(fp => fp.floor_band === '1-10');
-                    const highBands = pricingSource.filter(fp => ['41-50','51-60','60+'].includes(fp.floor_band));
-                    const lowAvg = lowBands.length ? lowBands.reduce((a, fp) => a + fp.avg_psf, 0) / lowBands.length : 0;
-                    const highAvg = highBands.length ? highBands.reduce((a, fp) => a + fp.avg_psf, 0) / highBands.length : 0;
-                    const floorPremium = lowAvg > 0 ? ((highAvg - lowAvg) / lowAvg * 100).toFixed(1) : null;
+                  {/* ═══ FLOOR PRICING TAB (Price Model) ═══ */}
+                  {tab === 'floorpricing' && (priceModel.length > 0 || dldSummary.length > 0) && (() => {
+                    const confColor = (c?: string) => c === 'verified' ? colors.green : c === 'estimated' ? colors.amber : colors.coral;
+                    const confLabel = (c?: string) => c === 'verified' ? 'VERIFIED' : c === 'estimated' ? 'ESTIMATED' : 'INFERRED';
+                    const totalModelTxns = priceModel.reduce((a, pm) => a + (pm.source_txn_count || 0), 0);
                     return (
                     <div>
-                      <Section title="Floor-Band Pricing" subtitle={`PSF by floor band from ${totalTxns} matched DLD transactions`} accent>
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-                          <Stat label="TOTAL TXNS" value={fmt(totalTxns)} small />
-                          <Stat label="EXACT MATCHES" value={fmt(totalExact)} small />
-                          {floorPremium && <Stat label="HIGH vs LOW PREMIUM" value={`+${floorPremium}`} unit="%" small />}
-                        </div>
-                        {roomTypes.map(room => {
-                          const rows = pricingSource.filter(fp => fp.rooms_en === room).sort((a, b) => bandOrder.indexOf(a.floor_band) - bandOrder.indexOf(b.floor_band));
-                          const rc = typeColor[room] || colors.textDim;
-                          return (
-                            <div key={room} style={{ marginBottom: 16 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                <div style={{ width: 4, height: 16, borderRadius: 2, background: rc }} />
-                                <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{room}</span>
-                                <span style={{ fontSize: 10, color: colors.textDim }}>{rows.reduce((a, r) => a + (r.txn_count || 0), 0)} txns</span>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(rows.length, 7)}, 1fr)`, gap: 4 }}>
-                                {rows.map((fp, i) => {
-                                  const maxPsf = Math.max(...pricingSource.filter(p => p.rooms_en === room).map(p => p.avg_psf || 0));
-                                  const minPsf = Math.min(...pricingSource.filter(p => p.rooms_en === room).map(p => p.avg_psf || Infinity));
-                                  const range = maxPsf - minPsf || 1;
-                                  const intensity = (fp.avg_psf - minPsf) / range;
-                                  return (
-                                    <div key={i} style={{
-                                      textAlign: 'center', padding: 8, borderRadius: 6,
-                                      background: `${rc}${Math.round(10 + intensity * 30).toString(16).padStart(2, '0')}`,
-                                      border: `1px solid ${rc}44`,
-                                    }}>
-                                      <div style={{ fontSize: 8, color: colors.textDim, fontFamily: MONO }}>{fp.floor_band}</div>
-                                      <div style={{ fontSize: 14, fontWeight: 700, color: colors.text, fontFamily: MONO, marginTop: 2 }}>{fmt(Math.round(fp.avg_psf))}</div>
-                                      <div style={{ fontSize: 8, color: colors.textDim }}>PSF · {fp.txn_count} txns</div>
-                                      <ConfBadge confidence={fp.confidence} />
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        <Divider label="DETAILED BREAKDOWN" />
-                        <div style={{ overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                            <thead>
-                              <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                                {['Type', 'Band', 'Avg PSF', 'Min', 'Max', 'Avg Price', 'Txns', 'Confidence'].map(h => (
-                                  <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 9, color: colors.textDim, fontFamily: MONO, fontWeight: 600 }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pricingSource.sort((a, b) => bandOrder.indexOf(a.floor_band) - bandOrder.indexOf(b.floor_band)).map((fp, i) => (
-                                <tr key={i} style={{ borderBottom: `1px solid ${colors.border}22` }}>
-                                  <td style={{ padding: '5px 8px', color: typeColor[fp.rooms_en] || colors.text }}>{fp.rooms_en}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO }}>{fp.floor_band}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO, color: colors.gold }}>{fmt(Math.round(fp.avg_psf))}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO, color: colors.textDim }}>{fmt(Math.round(fp.min_psf))}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO, color: colors.textDim }}>{fmt(Math.round(fp.max_psf))}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO }}>{fmtM(Math.round(fp.avg_price))}</td>
-                                  <td style={{ padding: '5px 8px', fontFamily: MONO }}>{fp.txn_count}</td>
-                                  <td style={{ padding: '5px 8px' }}><ConfBadge confidence={fp.confidence} /></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </Section>
-                      {/* Price model fallback */}
-                      {priceModel.length > 0 && pricingSource.length === 0 && (
-                        <Section title="Price Model" subtitle="Modeled PSF by unit type from xray_price_model">
-                          {priceModel.map((pm, i) => (
+                      {/* Card 1: PSF Range by Bedroom */}
+                      {priceModel.length > 0 && (
+                        <Section title="Market Range (12mo)" subtitle={`From xray_price_model · ${totalModelTxns} transactions (2025+ only)`} accent>
+                          {priceModel.map((pm, i) => {
+                            const rc = typeColor[`${pm.unit_type?.replace(/BR/i, '').trim()} B/R`] || colors.gold;
+                            const low = pm.psf_low || 0;
+                            const high = pm.psf_high || 0;
+                            const mid = pm.psf_mid || pm.psf_estimate || 0;
+                            const range = high - low || 1;
+                            const midPct = low > 0 ? ((mid - low) / range) * 100 : 50;
+                            return (
+                              <PCard key={i} style={{ marginBottom: 8 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ width: 4, height: 24, borderRadius: 2, background: rc }} />
+                                    <span style={{ fontSize: 15, fontWeight: 600, color: colors.text }}>{pm.unit_type}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Pip color={confColor(pm.confidence)} size={5} />
+                                    <span style={{ fontSize: 9, color: confColor(pm.confidence), fontFamily: MONO }}>
+                                      {confLabel(pm.confidence)} ({pm.source_txn_count || 0} txns)
+                                    </span>
+                                  </div>
+                                </div>
+                                {/* PSF range bar */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                                  <span style={{ fontSize: 11, color: colors.textDim, fontFamily: MONO, width: 48, textAlign: 'right' }}>{fmt(Math.round(low))}</span>
+                                  <div style={{ flex: 1, position: 'relative', height: 8, background: colors.elevated, borderRadius: 4, overflow: 'visible' }}>
+                                    <div style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', borderRadius: 4, background: `${rc}30` }} />
+                                    <div style={{ position: 'absolute', left: `${Math.max(0, Math.min(midPct, 100))}%`, top: -2, width: 3, height: 12, borderRadius: 2, background: colors.gold, transform: 'translateX(-50%)' }} />
+                                  </div>
+                                  <span style={{ fontSize: 11, color: colors.textDim, fontFamily: MONO, width: 48 }}>{fmt(Math.round(high))}</span>
+                                </div>
+                                <div style={{ textAlign: 'center', fontSize: 11, color: colors.gold, fontFamily: MONO }}>
+                                  Median: AED {fmt(Math.round(mid))}/sqft
+                                </div>
+                                {pm.source_date_range && (
+                                  <div style={{ textAlign: 'center', fontSize: 9, color: colors.textDim, marginTop: 4 }}>
+                                    {pm.source_date_range}
+                                  </div>
+                                )}
+                              </PCard>
+                            );
+                          })}
+                        </Section>
+                      )}
+
+                      {/* Card 2: Floor Premium Model */}
+                      {priceModel.some(pm => pm.floor_adj_per_floor) && (
+                        <Section title="Floor Premium Model" subtitle="AED PSF premium per floor above base">
+                          {priceModel.filter(pm => pm.floor_adj_per_floor).map((pm, i) => {
+                            const adj = pm.floor_adj_per_floor || 0;
+                            const mid = pm.psf_mid || pm.psf_estimate || 0;
+                            const sampleFloors = [10, 20, 30, 40, 50].filter(f => f <= (sel.total_floors || 60));
+                            return (
+                              <PCard key={i} style={{ marginBottom: 8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: colors.text }}>{pm.unit_type}</span>
+                                  <Tag color={colors.gold}>+AED {adj}/sqft per floor</Tag>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${sampleFloors.length}, 1fr)`, gap: 4 }}>
+                                  {sampleFloors.map(fl => {
+                                    const projected = Math.round(mid + fl * adj);
+                                    const premium = fl * adj;
+                                    return (
+                                      <div key={fl} style={{ textAlign: 'center', padding: 8, background: colors.bg, borderRadius: 6 }}>
+                                        <div style={{ fontSize: 8, color: colors.textDim, fontFamily: MONO }}>FLOOR {fl}</div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: colors.gold, fontFamily: MONO, marginTop: 2 }}>{fmt(projected)}</div>
+                                        <div style={{ fontSize: 8, color: colors.green, fontFamily: MONO }}>+{fmt(Math.round(premium))}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </PCard>
+                            );
+                          })}
+                        </Section>
+                      )}
+
+                      {/* Card 3: DLD Transaction Evidence (summary) */}
+                      {dldSummary.length > 0 && (
+                        <Section title="DLD Transaction Evidence" subtitle="Supporting data from verified DLD transactions">
+                          {dldSummary.map((d, i) => (
                             <PCard key={i} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div>
-                                <span style={{ fontSize: 13, color: colors.text }}>{pm.unit_type}</span>
-                                {pm.floor_range && <span style={{ fontSize: 10, color: colors.textDim, marginLeft: 8 }}>Floors {pm.floor_range}</span>}
+                                <span style={{ fontSize: 13, color: colors.text }}>{d.rooms_en}</span>
+                                <span style={{ fontSize: 11, color: colors.textDim, marginLeft: 8 }}>{d.txn_count} txns</span>
                               </div>
-                              <div style={{ textAlign: 'right', fontFamily: MONO }}>
-                                <div style={{ fontSize: 14, color: colors.gold }}>AED {fmt(pm.psf_estimate)}/sqft</div>
-                                <div style={{ fontSize: 9, color: colors.textDim }}>{pm.psf_low ? `${fmt(pm.psf_low)} — ${fmt(pm.psf_high)}` : ''}</div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: 13, color: colors.text, fontFamily: MONO }}>AED {fmt(d.avg_psf)}/sqft</div>
+                                <div style={{ fontSize: 9, color: colors.textDim }}>{fmt(d.min_price)} — {fmt(d.max_price)}</div>
                               </div>
                             </PCard>
                           ))}
@@ -1151,32 +1153,6 @@ export function ProjectsPage() {
                     </div>
                   )}
 
-                  {/* ═══ COMMUNITY INTEL (Villas) ═══ */}
-                  {tab === 'community' && isVilla && (
-                    <div>
-                      <Section title="Villa Community Intelligence" accent>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                          <Stat label="HIGHWAY PROXIMITY" value={`${sel.villa_highway_distance_m}m`} sub={sel.villa_highway_name}
-                            accent={sel.villa_highway_noise_risk === 'low' ? colors.green : colors.amber} />
-                          <Stat label="NEAREST SCHOOL" value={`${sel.villa_school_proximity_km}km`} sub={sel.villa_nearest_school} />
-                          <PCard>
-                            <div style={{ fontSize: 9, color: colors.muted, fontFamily: MONO }}>COMMUNITY</div>
-                            <div style={{ fontSize: 16, color: colors.text, marginTop: 6, textTransform: 'capitalize' }}>{sel.villa_community_maturity?.replace(/_/g, ' ')}</div>
-                            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                              {sel.villa_gated && <Tag color={colors.green}>GATED</Tag>}
-                              {sel.villa_private_pool && <Tag color={colors.blue}>PRIVATE POOL</Tag>}
-                            </div>
-                          </PCard>
-                          <PCard>
-                            <div style={{ fontSize: 9, color: colors.muted, fontFamily: MONO }}>PLOT & GARDEN</div>
-                            {sel.villa_plot_size_sqft && <div style={{ fontSize: 14, color: colors.text, marginTop: 6 }}>Plot: {fmt(sel.villa_plot_size_sqft)} sqft</div>}
-                            {sel.villa_garden_size_sqft && <div style={{ fontSize: 12, color: colors.green }}>Garden: {fmt(sel.villa_garden_size_sqft)} sqft</div>}
-                          </PCard>
-                        </div>
-                      </Section>
-                    </div>
-                  )}
-
                   {/* ═══ OFF-PLAN CONSTRUCTION TAB ═══ */}
                   {tab === 'offplan' && isOffplan && (
                     <div>
@@ -1253,22 +1229,12 @@ export function ProjectsPage() {
                           )}
                         </PCard>
 
-                        {(isApt || isOffplan) && sel.apt_worst_direction && (
+                        {sel.apt_worst_direction && (
                           <PCard style={{ marginBottom: 12 }}>
                             <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8, color: colors.text }}>Direction & Noise</div>
                             <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
                               Caution: {sel.apt_worst_direction}. {sel.apt_noise_floor_threshold ? `Noise attenuates above floor ${sel.apt_noise_floor_threshold}.` : ''}
                               {' '}Best: {sel.apt_best_direction}. {sel.apt_view_premium_pct ? `View premium: ~${sel.apt_view_premium_pct}%.` : ''}
-                            </div>
-                          </PCard>
-                        )}
-
-                        {isVilla && sel.villa_highway_distance_m && (
-                          <PCard style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8, color: colors.text }}>Highway & Noise</div>
-                            <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.7 }}>
-                              {sel.villa_highway_name} is {sel.villa_highway_distance_m}m away. Noise risk: {sel.villa_highway_noise_risk}.
-                              {sel.villa_highway_noise_risk === 'moderate' ? ' Perimeter villas hear traffic. Interior plots are quieter.' : ''}
                             </div>
                           </PCard>
                         )}
