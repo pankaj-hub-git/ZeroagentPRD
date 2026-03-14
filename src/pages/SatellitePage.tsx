@@ -197,7 +197,7 @@ export function SatellitePage() {
       try {
         const { data, error } = await sb.rpc('satellite_list_communities');
         if (error) console.error('[Satellite] list_communities:', error.message);
-        setCommunities(data || []);
+        setCommunities(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error('[Satellite] Failed to load communities:', e);
       }
@@ -246,17 +246,22 @@ export function SatellitePage() {
         setCommunityBoundary(boundaryRes.data || null);
         setPhases(Array.isArray(phasesRes.data) ? phasesRes.data : []);
 
-        // Fly to community
-        if (boundaryRes.data?.center) {
-          const c = boundaryRes.data.center;
-          mapRef.current?.flyTo({ center: [c.lng, c.lat], zoom: 13.5, duration: 1200 });
-        } else if (selCommunity.bbox_west && mapRef.current) {
-          mapRef.current.fitBounds(
-            [[selCommunity.bbox_west, selCommunity.bbox_south], [selCommunity.bbox_east, selCommunity.bbox_north]],
-            { padding: 60, duration: 1200 }
-          );
-        } else if (selCommunity.center_lat && mapRef.current) {
-          mapRef.current.flyTo({ center: [selCommunity.center_lng, selCommunity.center_lat], zoom: 14, duration: 1200 });
+        // Fly to community — validate coordinates to avoid Mapbox crash
+        try {
+          const ctr = boundaryRes.data?.center;
+          if (ctr && Number.isFinite(ctr.lng) && Number.isFinite(ctr.lat) && mapRef.current) {
+            mapRef.current.flyTo({ center: [ctr.lng, ctr.lat], zoom: 13.5, duration: 1200 });
+          } else if (Number.isFinite(selCommunity.bbox_west) && Number.isFinite(selCommunity.bbox_south)
+            && Number.isFinite(selCommunity.bbox_east) && Number.isFinite(selCommunity.bbox_north) && mapRef.current) {
+            mapRef.current.fitBounds(
+              [[selCommunity.bbox_west, selCommunity.bbox_south], [selCommunity.bbox_east, selCommunity.bbox_north]],
+              { padding: 60, duration: 1200 }
+            );
+          } else if (Number.isFinite(selCommunity.center_lat) && Number.isFinite(selCommunity.center_lng) && mapRef.current) {
+            mapRef.current.flyTo({ center: [selCommunity.center_lng, selCommunity.center_lat], zoom: 14, duration: 1200 });
+          }
+        } catch (flyErr) {
+          console.error('[Satellite] flyTo error:', flyErr);
         }
 
         console.log('[Satellite] Phases loaded:', (phasesRes.data || []).length, '— waiting for user to select a phase');
@@ -353,9 +358,11 @@ export function SatellitePage() {
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading transactions for', mp);
     (async () => {
-      const res = await sb.rpc('satellite_get_transactions', { p_masterplan: mp });
-      if (res.error) console.error('[Satellite] transactions:', res.error.message);
-      if (loadedCommunityRef.current === mp) setTransactions(res.data || []);
+      try {
+        const res = await sb.rpc('satellite_get_transactions', { p_masterplan: mp });
+        if (res.error) console.error('[Satellite] transactions:', res.error.message);
+        if (loadedCommunityRef.current === mp) setTransactions(Array.isArray(res.data) ? res.data : []);
+      } catch (e) { console.error('[Satellite] transactions fetch error:', e); }
     })();
   }, [layers.transactions, selPhase, selCommunity?.masterplan]);
 
@@ -364,9 +371,11 @@ export function SatellitePage() {
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading demographics for', mp);
     (async () => {
-      const res = await sb.rpc('satellite_get_demographics', { p_masterplan: mp });
-      if (res.error) console.error('[Satellite] demographics:', res.error.message);
-      if (loadedCommunityRef.current === mp) setDemographics(res.data || []);
+      try {
+        const res = await sb.rpc('satellite_get_demographics', { p_masterplan: mp });
+        if (res.error) console.error('[Satellite] demographics:', res.error.message);
+        if (loadedCommunityRef.current === mp) setDemographics(Array.isArray(res.data) ? res.data : []);
+      } catch (e) { console.error('[Satellite] demographics fetch error:', e); }
     })();
   }, [layers.demographics, selPhase, selCommunity?.masterplan]);
 
@@ -375,9 +384,11 @@ export function SatellitePage() {
     const mp = selCommunity.masterplan;
     console.log('[Satellite] On-demand: loading GEE status for', mp);
     (async () => {
-      const res = await sb.rpc('satellite_get_gee_status', { p_masterplan: mp });
-      if (res.error) console.error('[Satellite] gee_status:', res.error.message);
-      if (loadedCommunityRef.current === mp) setGeeStatus(res.data || []);
+      try {
+        const res = await sb.rpc('satellite_get_gee_status', { p_masterplan: mp });
+        if (res.error) console.error('[Satellite] gee_status:', res.error.message);
+        if (loadedCommunityRef.current === mp) setGeeStatus(Array.isArray(res.data) ? res.data : []);
+      } catch (e) { console.error('[Satellite] gee fetch error:', e); }
     })();
   }, [layers.gee, selPhase, selCommunity?.masterplan]);
 
@@ -591,8 +602,12 @@ export function SatellitePage() {
   const flyToPhase = useCallback((phase: R) => {
     const phaseName = phase.phase_name || phase.nearest_phase;
     setSelPhase(phaseName);
-    if (phase.center_lat && phase.center_lng && mapRef.current) {
-      mapRef.current.flyTo({ center: [phase.center_lng, phase.center_lat], zoom: 16, duration: 800 });
+    try {
+      if (Number.isFinite(phase.center_lat) && Number.isFinite(phase.center_lng) && mapRef.current) {
+        mapRef.current.flyTo({ center: [phase.center_lng, phase.center_lat], zoom: 16, duration: 800 });
+      }
+    } catch (e) {
+      console.error('[Satellite] flyToPhase error:', e);
     }
   }, []);
 
@@ -755,7 +770,7 @@ export function SatellitePage() {
                     <span style={{
                       fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 2,
                       background: rc + '20', color: rc, textTransform: 'uppercase',
-                    }}>{c.readiness}</span>
+                    }}>{String(c.readiness || '—')}</span>
                   </div>
                   <div style={{ fontSize: 9, color: colors.textDim, marginTop: 2, fontFamily: FONT_DATA }}>
                     {fmt(c.total_units)} units · {fmt(c.phases)} phases · {fmt(c.villa_types)} types
@@ -881,8 +896,8 @@ export function SatellitePage() {
                         setSelPhase(p.nearest_phase);
                         // Find matching phase for fly-to
                         const match = phases.find(ph => ph.phase_name === p.nearest_phase);
-                        if (match?.center_lat && match?.center_lng) {
-                          mapRef.current?.flyTo({ center: [match.center_lng, match.center_lat], zoom: 16, duration: 800 });
+                        if (match && Number.isFinite(match.center_lat) && Number.isFinite(match.center_lng) && mapRef.current) {
+                          try { mapRef.current.flyTo({ center: [match.center_lng, match.center_lat], zoom: 16, duration: 800 }); } catch {}
                         }
                       }}
                         style={{
@@ -1072,9 +1087,9 @@ export function SatellitePage() {
       </button>
 
       {/* MAP + BOTTOM PANEL */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', minWidth: 0 }}>
         {/* MAP */}
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
           {!selCommunity && !loadingList && (
             <div style={{
               position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10,
@@ -1324,8 +1339,8 @@ export function SatellitePage() {
           <div style={{
             borderTop: `1px solid ${colors.border}`, padding: '8px 12px',
             background: isDark ? '#0c0d14' : colors.surface,
-            overflowX: 'auto', whiteSpace: 'nowrap', display: 'flex', gap: 8,
-            flexShrink: 0,
+            overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap', display: 'flex', gap: 8,
+            flexShrink: 0, minHeight: 0,
           }}>
             {/* Clear filter button */}
             {selPhase && (
@@ -1381,6 +1396,8 @@ export function SatellitePage() {
                 </div>
               );
             })}
+            {/* Trailing spacer to ensure last card is fully scrollable */}
+            <div style={{ minWidth: 12, flexShrink: 0 }} />
           </div>
         )}
 
