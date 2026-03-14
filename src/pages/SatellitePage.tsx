@@ -206,80 +206,53 @@ export function SatellitePage() {
     })();
   }, []);
 
-  /* ── Load community detail data ── */
+  /* ── Phased community data loading ──
+     Phase 1: boundary + phases (small, needed for flyTo + phase cards)
+     Phase 2: villa units + clusters (core map layers)
+     Phase 3: amenities + delivery + DDA + map layer bundle (overlays)
+     Phase 4: transactions, demographics, gee (on-demand when layer toggled)
+  */
+  const loadedCommunityRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!selCommunity) return;
     const mp = selCommunity.masterplan;
     const communityKey = COMMUNITY_KEY[mp];
+    let cancelled = false;
+
+    // Reset state
+    loadedCommunityRef.current = mp;
     setDetailLoading(true);
     setSelPhase(null);
     setPopup(null);
+    setVillaUnits(null);
+    setClusterPolygons(null);
+    setTransactions([]);
+    setPhases([]);
+    setAmenities([]);
+    setDemographics([]);
+    setGeeStatus([]);
+    setAmenityDelivery(null);
+    setDdaPolygons(null);
+    setCommunityBoundary(null);
+    setMapLayerBundle(null);
+
     (async () => {
       try {
-        // Batch 1: Existing RPCs
-        const [unitsRes, clustersRes, txnRes, phasesRes, amenRes, demoRes, geeRes] = await Promise.all([
-          sb.rpc('satellite_get_villa_units', { p_masterplan: mp }),
-          sb.rpc('satellite_get_cluster_polygons', { p_masterplan: mp }),
-          sb.rpc('satellite_get_transactions', { p_masterplan: mp }),
+        // ── Phase 1: Boundary + Phase summary (small, fast — needed for flyTo) ──
+        console.log('[Satellite] Phase 1: loading boundary + phases for', mp);
+        const [boundaryRes, phasesRes] = await Promise.all([
+          sb.rpc('satellite_get_community_boundary', { p_community: mp }),
           sb.rpc('satellite_get_phase_summary', { p_masterplan: mp }),
-          sb.rpc('satellite_get_amenities', { p_masterplan: mp }),
-          sb.rpc('satellite_get_demographics', { p_masterplan: mp }),
-          sb.rpc('satellite_get_gee_status', { p_masterplan: mp }),
         ]);
-        if (unitsRes.error) console.error('[Satellite] villa_units:', unitsRes.error.message);
-        if (clustersRes.error) console.error('[Satellite] cluster_polygons:', clustersRes.error.message);
-        if (txnRes.error) console.error('[Satellite] transactions:', txnRes.error.message);
+        if (cancelled) return;
+        if (boundaryRes.error) console.error('[Satellite] community_boundary:', boundaryRes.error.message);
         if (phasesRes.error) console.error('[Satellite] phase_summary:', phasesRes.error.message);
-        if (amenRes.error) console.error('[Satellite] amenities:', amenRes.error.message);
-        if (demoRes.error) console.error('[Satellite] demographics:', demoRes.error.message);
-        if (geeRes.error) console.error('[Satellite] gee_status:', geeRes.error.message);
-
-        // Parse GeoJSON
-        const unitData = unitsRes.data;
-        const clusterData = clustersRes.data;
-        setVillaUnits(unitData && typeof unitData === 'object' && unitData.type === 'FeatureCollection'
-          ? unitData : { type: 'FeatureCollection', features: Array.isArray(unitData) ? unitData : [] });
-        setClusterPolygons(clusterData && typeof clusterData === 'object' && clusterData.type === 'FeatureCollection'
-          ? clusterData : { type: 'FeatureCollection', features: Array.isArray(clusterData) ? clusterData : [] });
-        setTransactions(txnRes.data || []);
-        setPhases(phasesRes.data || []);
-        setAmenities(amenRes.data || []);
-        setDemographics(demoRes.data || []);
-        setGeeStatus(geeRes.data || []);
-
-        // Batch 2: NEW — Amenity delivery + DDA polygons + boundary + map layers
-        const [deliveryRes, ddaRes, boundaryRes, mapLayerRes] = await Promise.all([
-          sb.rpc('satellite_get_amenity_delivery', { p_community: mp }).then(r => {
-            if (r.error) console.error('[Satellite] amenity_delivery:', r.error.message);
-            return r;
-          }),
-          sb.rpc('satellite_get_dda_polygons', { p_community: mp }).then(r => {
-            if (r.error) console.error('[Satellite] dda_polygons:', r.error.message);
-            return r;
-          }),
-          sb.rpc('satellite_get_community_boundary', { p_community: mp }).then(r => {
-            if (r.error) console.error('[Satellite] community_boundary:', r.error.message);
-            return r;
-          }),
-          communityKey
-            ? sb.rpc('get_community_map_layer', { p_community_key: communityKey }).then(r => {
-              if (r.error) console.error('[Satellite] map_layer:', r.error.message);
-              return r;
-            })
-            : Promise.resolve({ data: null, error: null }),
-        ]);
-
-        setAmenityDelivery(deliveryRes.data || null);
-
-        // DDA polygons come as GeoJSON FeatureCollection
-        const ddaData = ddaRes.data;
-        setDdaPolygons(ddaData && typeof ddaData === 'object' && ddaData.type === 'FeatureCollection'
-          ? ddaData : ddaData ? { type: 'FeatureCollection', features: Array.isArray(ddaData) ? ddaData : [] } : null);
 
         setCommunityBoundary(boundaryRes.data || null);
-        setMapLayerBundle(mapLayerRes.data || null);
+        setPhases(phasesRes.data || []);
 
-        // Fly to community
+        // Fly to community immediately
         if (boundaryRes.data?.center) {
           const c = boundaryRes.data.center;
           mapRef.current?.flyTo({ center: [c.lng, c.lat], zoom: 13.5, duration: 1200 });
@@ -292,26 +265,111 @@ export function SatellitePage() {
           mapRef.current.flyTo({ center: [selCommunity.center_lng, selCommunity.center_lat], zoom: 14, duration: 1200 });
         }
 
-        // Logging
+        // ── Phase 2: Villa units + cluster polygons (core map data) ──
+        console.log('[Satellite] Phase 2: loading units + clusters for', mp);
+        const [unitsRes, clustersRes] = await Promise.all([
+          sb.rpc('satellite_get_villa_units', { p_masterplan: mp }),
+          sb.rpc('satellite_get_cluster_polygons', { p_masterplan: mp }),
+        ]);
+        if (cancelled) return;
+        if (unitsRes.error) console.error('[Satellite] villa_units:', unitsRes.error.message);
+        if (clustersRes.error) console.error('[Satellite] cluster_polygons:', clustersRes.error.message);
+
+        const unitData = unitsRes.data;
+        const clusterData = clustersRes.data;
+        setVillaUnits(unitData && typeof unitData === 'object' && unitData.type === 'FeatureCollection'
+          ? unitData : { type: 'FeatureCollection', features: Array.isArray(unitData) ? unitData : [] });
+        setClusterPolygons(clusterData && typeof clusterData === 'object' && clusterData.type === 'FeatureCollection'
+          ? clusterData : { type: 'FeatureCollection', features: Array.isArray(clusterData) ? clusterData : [] });
+
+        // Phase 1+2 done — map is usable, clear main loading indicator
+        setDetailLoading(false);
+
         const unitFeatures = unitData?.features || [];
-        const positionedCount = unitFeatures.filter((f: R) => f.properties?.positioned).length;
-        console.log('[Satellite] Loaded:', {
-          community: mp,
+        console.log('[Satellite] Phase 2 done:', {
           units: unitFeatures.length,
-          positioned: positionedCount,
+          positioned: unitFeatures.filter((f: R) => f.properties?.positioned).length,
           clusters: (clusterData?.features || []).length,
-          transactions: (txnRes.data || []).length,
           phases: (phasesRes.data || []).length,
+        });
+
+        // ── Phase 3: Amenities + delivery + DDA + map layers (overlays, non-blocking) ──
+        console.log('[Satellite] Phase 3: loading amenities + delivery + DDA for', mp);
+        const [amenRes, deliveryRes, ddaRes, mapLayerRes] = await Promise.all([
+          sb.rpc('satellite_get_amenities', { p_masterplan: mp }),
+          sb.rpc('satellite_get_amenity_delivery', { p_community: mp }),
+          sb.rpc('satellite_get_dda_polygons', { p_community: mp }),
+          communityKey
+            ? sb.rpc('get_community_map_layer', { p_community_key: communityKey })
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+        if (cancelled) return;
+        if (amenRes.error) console.error('[Satellite] amenities:', amenRes.error.message);
+        if (deliveryRes.error) console.error('[Satellite] amenity_delivery:', deliveryRes.error.message);
+        if (ddaRes.error) console.error('[Satellite] dda_polygons:', ddaRes.error.message);
+
+        setAmenities(amenRes.data || []);
+        setAmenityDelivery(deliveryRes.data || null);
+
+        const ddaData = ddaRes.data;
+        setDdaPolygons(ddaData && typeof ddaData === 'object' && ddaData.type === 'FeatureCollection'
+          ? ddaData : ddaData ? { type: 'FeatureCollection', features: Array.isArray(ddaData) ? ddaData : [] } : null);
+
+        setMapLayerBundle(mapLayerRes.data || null);
+
+        console.log('[Satellite] Phase 3 done:', {
+          amenities: (amenRes.data || []).length,
           amenityDelivery: deliveryRes.data ? `${deliveryRes.data?.summary?.delivered || 0} delivered` : 'none',
           ddaPlots: (ddaData?.features || []).length,
           mapLayerAmenities: mapLayerRes.data?.amenity_count || 0,
         });
+
       } catch (e) {
         console.error('[Satellite] Detail load error:', e);
+        setDetailLoading(false);
       }
-      setDetailLoading(false);
     })();
+
+    return () => { cancelled = true; };
   }, [selCommunity?.masterplan]);
+
+  /* ── Phase 4: On-demand loading for transactions, demographics, gee ──
+     Only fetched when the user toggles the corresponding layer ON */
+  useEffect(() => {
+    if (!selCommunity || !layers.transactions || transactions.length > 0) return;
+    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    const mp = selCommunity.masterplan;
+    console.log('[Satellite] On-demand: loading transactions for', mp);
+    (async () => {
+      const res = await sb.rpc('satellite_get_transactions', { p_masterplan: mp });
+      if (res.error) console.error('[Satellite] transactions:', res.error.message);
+      if (loadedCommunityRef.current === mp) setTransactions(res.data || []);
+    })();
+  }, [layers.transactions, selCommunity?.masterplan]);
+
+  useEffect(() => {
+    if (!selCommunity || !layers.demographics || demographics.length > 0) return;
+    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    const mp = selCommunity.masterplan;
+    console.log('[Satellite] On-demand: loading demographics for', mp);
+    (async () => {
+      const res = await sb.rpc('satellite_get_demographics', { p_masterplan: mp });
+      if (res.error) console.error('[Satellite] demographics:', res.error.message);
+      if (loadedCommunityRef.current === mp) setDemographics(res.data || []);
+    })();
+  }, [layers.demographics, selCommunity?.masterplan]);
+
+  useEffect(() => {
+    if (!selCommunity || !layers.gee || geeStatus.length > 0) return;
+    if (loadedCommunityRef.current !== selCommunity.masterplan) return;
+    const mp = selCommunity.masterplan;
+    console.log('[Satellite] On-demand: loading GEE status for', mp);
+    (async () => {
+      const res = await sb.rpc('satellite_get_gee_status', { p_masterplan: mp });
+      if (res.error) console.error('[Satellite] gee_status:', res.error.message);
+      if (loadedCommunityRef.current === mp) setGeeStatus(res.data || []);
+    })();
+  }, [layers.gee, selCommunity?.masterplan]);
 
   /* ── Toggle layer ── */
   const toggleLayer = useCallback((key: LayerKey) => {
