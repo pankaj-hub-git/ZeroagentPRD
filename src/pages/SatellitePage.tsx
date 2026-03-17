@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from '@/lib/theme';
-import { sb, gold } from '@/lib/supabase';
+import { sb, gold, layers as layersSchema } from '@/lib/supabase';
 import { Loader2, Eye, EyeOff, ChevronRight, MapPin, Satellite } from 'lucide-react';
 import MapGL, { Source, Layer, Popup, type MapRef } from 'react-map-gl';
 import type { CircleLayer, LineLayer, FillLayer, SymbolLayer } from 'react-map-gl';
@@ -191,15 +191,62 @@ export function SatellitePage() {
     longitude: 55.27, latitude: 25.05, zoom: 11,
   });
 
+  const [listError, setListError] = useState<string | null>(null);
+
   /* ── Load community list ── */
   useEffect(() => {
     (async () => {
       try {
+        // Try RPC first
         const { data, error } = await sb.rpc('satellite_list_communities');
-        if (error) console.error('[Satellite] list_communities:', error.message);
-        setCommunities(Array.isArray(data) ? data : []);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          setCommunities(data);
+          setLoadingList(false);
+          return;
+        }
+        if (error) console.warn('[Satellite] RPC satellite_list_communities failed:', error.message, '— falling back to table query');
+
+        // Fallback: query layers.communities table directly
+        const { data: tblData, error: tblErr } = await layersSchema()
+          .from('communities')
+          .select('*')
+          .order('masterplan');
+        if (tblErr) {
+          console.error('[Satellite] layers.communities fallback failed:', tblErr.message);
+          setListError(`Could not load communities: ${error?.message || tblErr.message}`);
+          setLoadingList(false);
+          return;
+        }
+        if (Array.isArray(tblData) && tblData.length > 0) {
+          console.log('[Satellite] Loaded', tblData.length, 'communities from layers.communities table');
+          setCommunities(tblData);
+        } else {
+          // Last resort: query layers.villa_units for distinct masterplans
+          const { data: vuData, error: vuErr } = await layersSchema()
+            .from('villa_units')
+            .select('masterplan')
+            .limit(1000);
+          if (vuErr) {
+            console.error('[Satellite] villa_units fallback failed:', vuErr.message);
+            setListError(`Could not load communities: ${error?.message || vuErr.message}`);
+          } else {
+            const unique = [...new Set((vuData || []).map((r: R) => r.masterplan).filter(Boolean))].sort();
+            console.log('[Satellite] Built community list from villa_units:', unique.length, 'communities');
+            setCommunities(unique.map(mp => ({
+              masterplan: mp,
+              readiness: 'basic',
+              total_units: null,
+              phases: null,
+              villa_types: null,
+            })));
+            if (unique.length === 0) {
+              setListError('No communities found in database');
+            }
+          }
+        }
       } catch (e) {
         console.error('[Satellite] Failed to load communities:', e);
+        setListError(`Failed to load communities: ${e instanceof Error ? e.message : String(e)}`);
       }
       setLoadingList(false);
     })();
@@ -753,6 +800,14 @@ export function SatellitePage() {
             <div style={{ fontSize: 9, color: colors.textDim, fontFamily: FONT_DATA, letterSpacing: 1, marginBottom: 8 }}>
               VILLA COMMUNITIES · {communities.length}
             </div>
+            {listError && communities.length === 0 && (
+              <div style={{ padding: '12px 10px', fontSize: 11, color: colors.red || '#ef4444', lineHeight: 1.5 }}>
+                {listError}
+                <div style={{ fontSize: 9, color: colors.textDim, marginTop: 6 }}>
+                  Check that the satellite_list_communities function exists in Supabase, or that the layers.communities table has data.
+                </div>
+              </div>
+            )}
             {communities.map(c => {
               const active = selCommunity?.masterplan === c.masterplan;
               const rc = READINESS_COLOR[c.readiness] || '#94a3b8';
