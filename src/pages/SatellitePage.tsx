@@ -197,30 +197,62 @@ export function SatellitePage() {
   useEffect(() => {
     (async () => {
       try {
-        // Try RPC first
-        const { data, error } = await sb.rpc('satellite_list_communities');
-        if (!error && Array.isArray(data) && data.length > 0) {
-          setCommunities(data);
+        // Try RPC first (with 5s timeout so fallbacks can run quickly)
+        let rpcData: unknown = null;
+        let rpcError: { message: string } | null = null;
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          const { data, error } = await sb.rpc('satellite_list_communities', {}, { signal: controller.signal } as any);
+          clearTimeout(timer);
+          rpcData = data;
+          rpcError = error;
+        } catch (abortErr) {
+          console.warn('[Satellite] RPC satellite_list_communities timed out — falling back to table query');
+        }
+        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+          setCommunities(rpcData);
           setLoadingList(false);
           return;
         }
-        if (error) console.warn('[Satellite] RPC satellite_list_communities failed:', error.message, '— falling back to table query');
+        if (rpcError) console.warn('[Satellite] RPC satellite_list_communities failed:', rpcError.message, '— falling back to table query');
 
         // Fallback: query layers.communities table directly
         const { data: tblData, error: tblErr } = await layersSchema()
           .from('communities')
-          .select('*')
-          .order('masterplan');
-        if (tblErr) {
-          console.error('[Satellite] layers.communities fallback failed:', tblErr.message);
-          setListError(`Could not load communities: ${error?.message || tblErr.message}`);
+          .select('masterplan, readiness, total_units, phases, villa_types')
+          .order('masterplan')
+          .limit(500);
+        if (!tblErr && Array.isArray(tblData) && tblData.length > 0) {
+          console.log('[Satellite] Loaded', tblData.length, 'communities from layers.communities table');
+          setCommunities(tblData);
           setLoadingList(false);
           return;
         }
-        if (Array.isArray(tblData) && tblData.length > 0) {
-          console.log('[Satellite] Loaded', tblData.length, 'communities from layers.communities table');
-          setCommunities(tblData);
-        } else {
+        if (tblErr) console.warn('[Satellite] layers.communities fallback failed:', tblErr.message);
+
+        // Fallback 2: navigation_hierarchy (public schema, well-indexed)
+        const { data: navData, error: navErr } = await sb
+          .from('navigation_hierarchy')
+          .select('community_name, total_units')
+          .order('community_name')
+          .limit(500);
+        if (!navErr && Array.isArray(navData) && navData.length > 0) {
+          const unique = [...new Map(navData.map((r: R) => [r.community_name, r])).values()];
+          console.log('[Satellite] Loaded', unique.length, 'communities from navigation_hierarchy');
+          setCommunities(unique.map((r: R) => ({
+            masterplan: r.community_name,
+            readiness: 'basic',
+            total_units: r.total_units ?? null,
+            phases: null,
+            villa_types: null,
+          })));
+          setLoadingList(false);
+          return;
+        }
+        if (navErr) console.warn('[Satellite] navigation_hierarchy fallback failed:', navErr.message);
+
+        {
           // Last resort: query layers.villa_units for distinct masterplans
           const { data: vuData, error: vuErr } = await layersSchema()
             .from('villa_units')
@@ -228,7 +260,7 @@ export function SatellitePage() {
             .limit(1000);
           if (vuErr) {
             console.error('[Satellite] villa_units fallback failed:', vuErr.message);
-            setListError(`Could not load communities: ${error?.message || vuErr.message}`);
+            setListError(`Could not load communities: ${rpcError?.message || vuErr.message}`);
           } else {
             const unique = [...new Set((vuData || []).map((r: R) => r.masterplan).filter(Boolean))].sort();
             console.log('[Satellite] Built community list from villa_units:', unique.length, 'communities');
