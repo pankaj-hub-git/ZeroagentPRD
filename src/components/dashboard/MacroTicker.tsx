@@ -1,135 +1,326 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '@/lib/theme';
 
+/*
+ZeroAgent Macro Policy + REIT Feed
+Data: Supabase bronze layer — pulled Mar 17 2026
+Tables: fed_funds_rate, eibor_rates, fx_rates, oil_brent, uae_macro,
+        property_price_index, dubai_market_annual_kpis, reit_re_equities
+*/
+
 interface MacroItem {
   label: string;
   value: string;
-  unit: string;
-  change: number | null;
-  date: string;
+  unit?: string;
+  change?: number | null;
   isYoY?: boolean;
+  tag?: string;
+  tagColor?: string;
+  note?: string;
 }
 
 interface MacroGroup {
   category: string;
+  color: string;
+  icon: string;
   items: MacroItem[];
 }
 
 const MACRO_DATA: MacroGroup[] = [
   {
     category: 'RATES',
+    color: '#00E5A0',
+    icon: '⬡',
     items: [
-      { label: 'Fed Funds', value: '4.33', unit: '%', change: 0, date: 'Mar 2026' },
-      { label: 'EIBOR 1M', value: '4.22', unit: '%', change: null, date: '3 Mar' },
-      { label: 'EIBOR 3M', value: '4.33', unit: '%', change: -0.53, date: '3 Mar' },
-      { label: 'EIBOR 6M', value: '4.30', unit: '%', change: -0.61, date: '3 Mar' },
-      { label: 'EIBOR 1Y', value: '4.22', unit: '%', change: null, date: '3 Mar' },
+      { label: 'Fed Funds', value: '3.64', unit: '%', change: 0, tag: 'HOLD', tagColor: '#FFB547', note: 'FOMC Mar 17-18' },
+      { label: 'CBUAE Base', value: '3.65', unit: '%', change: 0 },
+      { label: 'EIBOR 1M', value: '3.56', unit: '%' },
+      { label: 'EIBOR 3M', value: '3.65', unit: '%' },
+      { label: 'EIBOR 6M', value: '3.63', unit: '%' },
+      { label: 'EIBOR 1Y', value: '3.56', unit: '%' },
+    ],
+  },
+  {
+    category: 'ENERGY',
+    color: '#FF6B35',
+    icon: '◉',
+    items: [
+      { label: 'Brent Crude', value: '103.14', unit: 'USD', change: 38.5, tag: 'SPIKE', tagColor: '#FF4757', note: 'Hormuz disruption' },
     ],
   },
   {
     category: 'FX',
+    color: '#6C8EFF',
+    icon: '◇',
     items: [
-      { label: 'USD/AED', value: '3.6725', unit: '', change: 0, date: 'Mar 2026' },
-      { label: 'EUR/AED', value: '3.9700', unit: '', change: null, date: 'Mar 2026' },
-      { label: 'GBP/AED', value: '4.5900', unit: '', change: null, date: 'Mar 2026' },
-      { label: 'INR/AED', value: '0.0424', unit: '', change: null, date: 'Mar 2026' },
-    ],
-  },
-  {
-    category: 'COMMODITIES',
-    items: [
-      { label: 'Brent Crude', value: '74.50', unit: 'USD', change: -1.71, date: 'Mar 2026' },
+      { label: 'USD/AED', value: '3.6725', change: 0, note: 'Peg' },
+      { label: 'EUR/AED', value: '4.2680', change: 7.5 },
+      { label: 'GBP/AED', value: '4.9340', change: 7.5 },
+      { label: 'INR/AED', value: '0.0399', change: -5.9 },
+      { label: 'CNY/AED', value: '0.5319' },
     ],
   },
   {
     category: 'UAE MACRO',
+    color: '#FF6B8A',
+    icon: '△',
     items: [
-      { label: 'UAE GDP Growth', value: '4.70', unit: '%', change: null, date: 'Mar 2026' },
-      { label: 'UAE Inflation', value: '2.40', unit: '%', change: null, date: 'Mar 2026' },
-      { label: 'Dubai GDP', value: '122.1B', unit: 'AED', change: null, date: 'Q4 2025' },
-      { label: 'Dubai GDP Growth', value: '4.70', unit: '%', change: 1.2, date: 'Q4 2025' },
+      { label: 'GDP Growth', value: '5.0', unit: '%', note: '2025 est' },
+      { label: 'Inflation', value: '2.04', unit: '% YoY', note: 'Dec 2025' },
+      { label: 'PMI', value: '55.0', tag: 'EXPAND', tagColor: '#00E5A0', note: '12mo high' },
+      { label: 'Infl Forecast', value: '1.8', unit: '% 2026', note: 'CBUAE' },
     ],
   },
   {
     category: 'PROPERTY',
+    color: '#B57FFF',
+    icon: '◻',
     items: [
-      { label: 'PPI Apartment', value: '302.8', unit: '', change: 9.7, date: 'Mar 2026', isYoY: true },
-      { label: 'PPI Villa', value: '336.5', unit: '', change: 14.6, date: 'Mar 2026', isYoY: true },
+      { label: 'PPI Apt', value: '310.5', change: 10.79, isYoY: true, note: '1,976 PSF' },
+      { label: 'PPI Villa', value: '345.2', change: 14.6, isYoY: true, note: '2,450 PSF' },
+      { label: 'Rent Idx', value: '205.3', change: 5.21, isYoY: true },
+      { label: 'DFM RE Idx', value: '11,700', change: -30.0, tag: 'CRASH', tagColor: '#FF4757', note: 'from 16,910 peak' },
     ],
   },
   {
-    category: 'OUTLOOK 2026',
+    category: 'REITs',
+    color: '#4ECDC4',
+    icon: '⬢',
     items: [
-      { label: 'Prime Forecast', value: '+3.0', unit: '%', change: null, date: '2026' },
-      { label: 'Mainstream Forecast', value: '+1.0', unit: '%', change: null, date: '2026' },
-      { label: 'Appreciation Mid', value: '+6.5', unit: '%', change: null, date: '2026' },
+      { label: 'DUBAIRESI', value: '1.22', unit: 'AED', change: -15.9, note: 'Yld 6.94% · Occ 98%' },
+      { label: 'ENBD REIT', value: '0.52', unit: 'USD', change: -1.5, note: 'Yld 7.77%' },
+      { label: 'Emirates REIT', value: '~0.49', unit: 'USD', note: 'Yld 6.57% · P/E 0.67' },
+    ],
+  },
+  {
+    category: 'DEVELOPERS',
+    color: '#FFD93D',
+    icon: '▣',
+    items: [
+      { label: 'EMAAR', value: '11.20', unit: 'AED', change: -29.6, tag: 'SELLOFF', tagColor: '#FF4757', note: 'Yld 8.93%' },
+      { label: 'EMAARDEV', value: '13.50', unit: 'AED', change: -34.8, note: 'ATH was 20.70' },
+    ],
+  },
+  {
+    category: 'SIGNALS',
+    color: '#00D4FF',
+    icon: '⚡',
+    items: [
+      { label: 'REIT-EIBOR Spread', value: '+338', unit: 'bps', note: 'DUBAIRESI vs 1Y', tag: 'WIDE', tagColor: '#FFB547' },
+      { label: 'Equity ÷ Physical', value: '-30% / +11%', tag: 'GAP', tagColor: '#FF6B8A' },
+      { label: 'Buyer Inquiries', value: '-45', unit: '%', tag: 'PAUSE', tagColor: '#FFB547' },
+      { label: '2026 Handovers', value: '120K', unit: 'units', note: '2× normal' },
     ],
   },
 ];
 
-const CATEGORY_COLORS: Record<string, string> = {
-  RATES: '#00D4AA',
-  FX: '#6C8EFF',
-  COMMODITIES: '#FFB547',
-  'UAE MACRO': '#FF6B8A',
-  PROPERTY: '#B57FFF',
-  'OUTLOOK 2026': '#4ECDC4',
-};
+// Split data into two rows for sub-ticker
+const PRIMARY_CATS = ['RATES', 'ENERGY', 'FX', 'UAE MACRO'];
+const SECONDARY_CATS = ['PROPERTY', 'REITs', 'DEVELOPERS', 'SIGNALS'];
 
-const CATEGORY_ICONS: Record<string, string> = {
-  RATES: '◆',
-  FX: '◈',
-  COMMODITIES: '●',
-  'UAE MACRO': '▲',
-  PROPERTY: '■',
-  'OUTLOOK 2026': '★',
-};
+const PRIMARY_DATA = MACRO_DATA.filter(g => PRIMARY_CATS.includes(g.category));
+const SECONDARY_DATA = MACRO_DATA.filter(g => SECONDARY_CATS.includes(g.category));
 
-function ChangeIndicator({ change, isYoY }: { change: number | null; isYoY?: boolean }) {
-  if (change === null || change === undefined) return null;
-  const isPositive = change > 0;
-  const isZero = change === 0;
-  const color = isZero ? '#7A8599' : isPositive ? '#00D4AA' : '#FF4757';
-  const arrow = isZero ? '―' : isPositive ? '▲' : '▼';
-  const suffix = isYoY ? ' YoY' : '';
+type TickerEntry =
+  | { type: 'divider'; category: string; color: string; icon: string }
+  | { type: 'item'; item: MacroItem; catColor: string };
 
+function buildEntries(groups: MacroGroup[]): TickerEntry[] {
+  const entries: TickerEntry[] = [];
+  groups.forEach((group) => {
+    entries.push({ type: 'divider', category: group.category, color: group.color, icon: group.icon });
+    group.items.forEach((item) => {
+      entries.push({ type: 'item', item, catColor: group.color });
+    });
+  });
+  return entries;
+}
+
+function TagBadge({ text, color, isDark }: { text: string; color: string; isDark: boolean }) {
   return (
-    <span style={{ color, fontSize: 11, fontWeight: 600, marginLeft: 6, letterSpacing: 0.3 }}>
-      {arrow} {Math.abs(change).toFixed(change % 1 === 0 ? 0 : 1)}%{suffix}
+    <span style={{
+      background: `${color}18`,
+      color,
+      fontSize: 8,
+      fontWeight: 800,
+      letterSpacing: 1.5,
+      padding: '2px 5px',
+      borderRadius: 3,
+      border: `1px solid ${color}33`,
+      marginLeft: 4,
+      whiteSpace: 'nowrap' as const,
+    }}>
+      {text}
     </span>
   );
 }
 
-type TickerEntry =
-  | { type: 'divider'; category: string }
-  | { type: 'item'; item: MacroItem; catColor: string };
+function ChangeIndicator({ change, isYoY }: { change?: number | null; isYoY?: boolean }) {
+  if (change === null || change === undefined) return null;
+  const isPositive = change > 0;
+  const isZero = change === 0;
+  const color = isZero ? '#7A8599' : isPositive ? '#00E5A0' : '#FF4757';
+  const arrow = isZero ? '―' : isPositive ? '▲' : '▼';
+  const suffix = isYoY ? 'y' : '';
+
+  return (
+    <span style={{ color, fontSize: 10, fontWeight: 700, marginLeft: 4, letterSpacing: 0.2 }}>
+      {arrow}{Math.abs(change).toFixed(1)}%{suffix}
+    </span>
+  );
+}
+
+function TickerStrip({
+  entries,
+  scrollRef,
+  isPaused,
+  speed,
+  height,
+  isDark,
+  labelColor,
+  valueColor,
+  unitColor,
+  fadeLColor,
+  fadeRColor,
+  borderCol,
+  bgGrad,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  entries: TickerEntry[];
+  scrollRef: React.RefObject<HTMLDivElement>;
+  isPaused: boolean;
+  speed: number;
+  height: number;
+  isDark: boolean;
+  labelColor: string;
+  valueColor: string;
+  unitColor: string;
+  fadeLColor: string;
+  fadeRColor: string;
+  borderCol: string;
+  bgGrad: string;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const renderContent = () =>
+    entries.map((entry, i) =>
+      entry.type === 'divider' ? (
+        <div key={`d-${i}`} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '0 14px 0 8px', whiteSpace: 'nowrap' as const, height: '100%',
+          borderLeft: `2px solid ${entry.color}30`,
+        }}>
+          <span style={{ color: entry.color, fontSize: 8, opacity: 0.7 }}>
+            {entry.icon}
+          </span>
+          <span style={{
+            color: entry.color, fontSize: 8, fontWeight: 800,
+            letterSpacing: 2.5, textTransform: 'uppercase' as const,
+          }}>
+            {entry.category}
+          </span>
+        </div>
+      ) : (
+        <div key={`i-${i}`} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '0 22px', whiteSpace: 'nowrap' as const, height: '100%',
+        }}>
+          <span style={{
+            color: labelColor, fontSize: 10, fontWeight: 600,
+            letterSpacing: 0.8, textTransform: 'uppercase' as const,
+          }}>
+            {entry.item.label}
+          </span>
+          <span style={{
+            color: valueColor, fontSize: 14, fontWeight: 800,
+            fontFamily: "'IBM Plex Mono', 'Fira Code', monospace",
+            letterSpacing: -0.3,
+          }}>
+            {entry.item.value}
+            {entry.item.unit && (
+              <span style={{ fontSize: 9, color: unitColor, marginLeft: 2, fontWeight: 500 }}>
+                {entry.item.unit}
+              </span>
+            )}
+          </span>
+          <ChangeIndicator change={entry.item.change} isYoY={entry.item.isYoY} />
+          {entry.item.tag && <TagBadge text={entry.item.tag} color={entry.item.tagColor || '#7A8599'} isDark={isDark} />}
+          {entry.item.note && (
+            <span style={{ color: isDark ? '#2D3748' : '#999', fontSize: 9, fontStyle: 'italic', marginLeft: 3 }}>
+              {entry.item.note}
+            </span>
+          )}
+        </div>
+      )
+    );
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        background: bgGrad,
+        borderBottom: `1px solid ${borderCol}`,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0, width: 40,
+        background: `linear-gradient(90deg, ${fadeLColor} 0%, transparent 100%)`,
+        zIndex: 2, pointerEvents: 'none' as const,
+      }} />
+      <div style={{
+        position: 'absolute', right: 0, top: 0, bottom: 0, width: 40,
+        background: `linear-gradient(270deg, ${fadeRColor} 0%, transparent 100%)`,
+        zIndex: 2, pointerEvents: 'none' as const,
+      }} />
+
+      <div style={{ height, display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+        <div ref={scrollRef} style={{
+          display: 'inline-flex', alignItems: 'center',
+          willChange: 'transform', height: '100%',
+        }}>
+          {renderContent()}
+          {renderContent()}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function MacroTicker() {
   const [isPaused, setIsPaused] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const primaryRef = useRef<HTMLDivElement>(null);
+  const secondaryRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<number>(0);
-  const posRef = useRef(0);
+  const primaryPos = useRef(0);
+  const secondaryPos = useRef(0);
   const { colors, mode } = useTheme();
 
-  const allItems: TickerEntry[] = [];
-  MACRO_DATA.forEach((group) => {
-    allItems.push({ type: 'divider', category: group.category });
-    group.items.forEach((item) => {
-      allItems.push({ type: 'item', item, catColor: CATEGORY_COLORS[group.category] || '#7A8599' });
-    });
-  });
+  const primaryEntries = buildEntries(PRIMARY_DATA);
+  const secondaryEntries = buildEntries(SECONDARY_DATA);
 
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    const speed = 1.0;
+    const primary = primaryRef.current;
+    const secondary = secondaryRef.current;
+    if (!primary || !secondary) return;
 
     function animate() {
-      if (!isPaused && container) {
-        posRef.current += speed;
-        const half = container.scrollWidth / 2;
-        if (half > 0 && posRef.current >= half) posRef.current -= half;
-        container.style.transform = `translateX(-${posRef.current}px)`;
+      if (!isPaused) {
+        // Primary row scrolls left
+        primaryPos.current += 0.8;
+        const primaryHalf = primary!.scrollWidth / 2;
+        if (primaryHalf > 0 && primaryPos.current >= primaryHalf) primaryPos.current -= primaryHalf;
+        primary!.style.transform = `translateX(-${primaryPos.current}px)`;
+
+        // Secondary row scrolls left slightly slower
+        secondaryPos.current += 0.6;
+        const secondaryHalf = secondary!.scrollWidth / 2;
+        if (secondaryHalf > 0 && secondaryPos.current >= secondaryHalf) secondaryPos.current -= secondaryHalf;
+        secondary!.style.transform = `translateX(-${secondaryPos.current}px)`;
       }
       animRef.current = requestAnimationFrame(animate);
     }
@@ -142,90 +333,50 @@ export function MacroTicker() {
     ? 'linear-gradient(135deg, #111827 0%, #0D1117 100%)'
     : 'linear-gradient(135deg, #F0EDE6 0%, #F5F5F0 100%)';
   const borderCol = isDark ? '#1E2536' : colors.border;
-  const labelColor = isDark ? '#5A6577' : '#777777';
+  const labelColor = isDark ? '#4A5568' : '#777777';
   const valueColor = colors.text;
-  const unitColor = isDark ? '#5A6577' : '#999999';
+  const unitColor = isDark ? '#4A5568' : '#999999';
   const fadeLColor = isDark ? '#111827' : '#F0EDE6';
   const fadeRColor = isDark ? '#0D1117' : '#F5F5F0';
 
-  const renderContent = () =>
-    allItems.map((entry, i) =>
-      entry.type === 'divider' ? (
-        <div key={`d-${i}`} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '0 20px 0 12px', whiteSpace: 'nowrap', height: '100%',
-          borderLeft: `2px solid ${CATEGORY_COLORS[entry.category] || '#5A6577'}22`,
-        }}>
-          <span style={{ color: CATEGORY_COLORS[entry.category], fontSize: 9, opacity: 0.7 }}>
-            {CATEGORY_ICONS[entry.category] || '●'}
-          </span>
-          <span style={{
-            color: CATEGORY_COLORS[entry.category], fontSize: 9, fontWeight: 700,
-            letterSpacing: 2, textTransform: 'uppercase' as const,
-          }}>
-            {entry.category}
-          </span>
-        </div>
-      ) : (
-        <div key={`i-${i}`} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '0 28px', whiteSpace: 'nowrap', height: '100%',
-        }}>
-          <span style={{
-            color: labelColor, fontSize: 11, fontWeight: 500,
-            textTransform: 'uppercase' as const, letterSpacing: 1.2,
-          }}>
-            {entry.item.label}
-          </span>
-          <span style={{
-            color: valueColor, fontSize: 15, fontWeight: 700,
-            fontFamily: "'IBM Plex Mono', monospace",
-            letterSpacing: -0.2,
-          }}>
-            {entry.item.value}
-            {entry.item.unit && (
-              <span style={{ fontSize: 10, color: unitColor, marginLeft: 2, fontWeight: 500 }}>
-                {entry.item.unit}
-              </span>
-            )}
-          </span>
-          <ChangeIndicator change={entry.item.change} isYoY={entry.item.isYoY} />
-        </div>
-      )
-    );
+  const sharedProps = {
+    isPaused,
+    isDark,
+    labelColor,
+    valueColor,
+    unitColor,
+    fadeLColor,
+    fadeRColor,
+    borderCol,
+    bgGrad,
+    onMouseEnter: () => setIsPaused(true),
+    onMouseLeave: () => setIsPaused(false),
+  };
 
   return (
-    <div style={{
-      width: '100%',
-      background: bgGrad,
-      borderBottom: `1px solid ${borderCol}`,
-      overflow: 'hidden',
-      position: 'relative',
-    }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}>
-      {/* Edge fades */}
-      <div style={{
-        position: 'absolute', left: 0, top: 0, bottom: 0, width: 40,
-        background: `linear-gradient(90deg, ${fadeLColor} 0%, transparent 100%)`,
-        zIndex: 2, pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', right: 0, top: 0, bottom: 0, width: 40,
-        background: `linear-gradient(270deg, ${fadeRColor} 0%, transparent 100%)`,
-        zIndex: 2, pointerEvents: 'none',
-      }} />
-
-      {/* Scrolling content */}
-      <div style={{ height: 40, display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-        <div ref={scrollRef} style={{
-          display: 'inline-flex', alignItems: 'center',
-          willChange: 'transform', height: '100%',
-        }}>
-          {renderContent()}
-          {renderContent()}
-        </div>
-      </div>
+    <div style={{ width: '100%' }}>
+      {/* Primary ticker: RATES, ENERGY, FX, UAE MACRO */}
+      <TickerStrip
+        entries={primaryEntries}
+        scrollRef={primaryRef as React.RefObject<HTMLDivElement>}
+        speed={0.8}
+        height={40}
+        {...sharedProps}
+      />
+      {/* Secondary ticker: PROPERTY, REITs, DEVELOPERS, SIGNALS */}
+      <TickerStrip
+        entries={secondaryEntries}
+        scrollRef={secondaryRef as React.RefObject<HTMLDivElement>}
+        speed={0.6}
+        height={36}
+        {...sharedProps}
+        bgGrad={isDark
+          ? 'linear-gradient(135deg, #0D1117 0%, #0A0E16 100%)'
+          : 'linear-gradient(135deg, #EDEAE3 0%, #F0F0EB 100%)'
+        }
+        fadeLColor={isDark ? '#0D1117' : '#EDEAE3'}
+        fadeRColor={isDark ? '#0A0E16' : '#F0F0EB'}
+      />
     </div>
   );
 }
