@@ -40,6 +40,10 @@ setTimeout(() => {
       { schema: 'public', table: 'xray_floor_pricing', fn: () => sb.from('xray_floor_pricing').select('*', { count: 'exact', head: true }) },
       { schema: 'public', table: 'xray_za_insights', fn: () => sb.from('xray_za_insights').select('*', { count: 'exact', head: true }) },
       { schema: 'public', table: 'xray_ejari_summary', fn: () => sb.from('xray_ejari_summary').select('*', { count: 'exact', head: true }) },
+      // Procedure Intelligence tables
+      { schema: 'public', table: 'transaction_guides', fn: () => sb.from('transaction_guides').select('*', { count: 'exact', head: true }) },
+      { schema: 'public', table: 'guide_steps', fn: () => sb.from('guide_steps').select('*', { count: 'exact', head: true }) },
+      { schema: 'public', table: 'guide_costs', fn: () => sb.from('guide_costs').select('*', { count: 'exact', head: true }) },
     ];
     for (const { schema, table, fn } of checks) {
       const { count, error } = await fn();

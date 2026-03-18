@@ -11,6 +11,8 @@ import { YieldIntelligencePage } from '@/pages/YieldIntelligencePage';
 import { PricePredictionPage } from '@/pages/PricePredictionPage';
 import { PhaseIntelligencePage } from '@/pages/PhaseIntelligencePage';
 import { AmenitiesPricePage } from '@/pages/AmenitiesPricePage';
+import { ProcedurePage } from '@/pages/ProcedurePage';
+import { GuideDetailPage } from '@/pages/GuideDetailPage';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -27,6 +29,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/price-prediction" element={<PricePredictionPage />} />
           <Route path="/phase-intelligence" element={<PhaseIntelligencePage />} />
           <Route path="/amenities-price" element={<AmenitiesPricePage />} />
+          <Route path="/procedure" element={<ProcedurePage />} />
+          <Route path="/procedure/:guideType" element={<GuideDetailPage />} />
           <Route path="*" element={<HomePage />} />
         </Route>
       </Routes>
