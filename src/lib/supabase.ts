@@ -32,6 +32,7 @@ setTimeout(() => {
       { schema: 'silver', table: 'price_timeseries', fn: () => silver().from('price_timeseries').select('*', { count: 'exact', head: true }) },
       { schema: 'gold', table: 'phase_registry', fn: () => gold().from('phase_registry').select('*', { count: 'exact', head: true }) },
       { schema: 'gold', table: 'developer_scores', fn: () => gold().from('developer_scores').select('*', { count: 'exact', head: true }) },
+      { schema: 'gold', table: 'community_amenity_polygons', fn: () => gold().from('community_amenity_polygons').select('*', { count: 'exact', head: true }) },
       { schema: 'layers', table: 'communities', fn: () => layers().from('communities').select('*', { count: 'exact', head: true }) },
       // V3 tables
       { schema: 'public', table: 'xray_unit_registry', fn: () => sb.from('xray_unit_registry').select('*', { count: 'exact', head: true }) },

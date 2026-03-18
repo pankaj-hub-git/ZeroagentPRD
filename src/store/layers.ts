@@ -9,6 +9,7 @@ interface LayerStore {
   blockingEngine: boolean;
   phaseIntelligence: boolean;
   serviceCharges: boolean;
+  amenityPolygons: boolean;
   toggle: (layer: keyof Omit<LayerStore, 'toggle'>) => void;
 }
 
@@ -21,5 +22,6 @@ export const useLayerStore = create<LayerStore>((set) => ({
   blockingEngine: false,
   phaseIntelligence: false,
   serviceCharges: false,
+  amenityPolygons: false,
   toggle: (layer) => set((s) => ({ [layer]: !s[layer] } as Partial<LayerStore>)),
 }));

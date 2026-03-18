@@ -9,6 +9,7 @@ import { PhaseIntelLayer } from './layers/PhaseIntelLayer';
 import { MacroExposureLayer } from './layers/MacroExposureLayer';
 import { ServiceChargesLayer } from './layers/ServiceChargesLayer';
 import { ListingIntegrityLayer } from './layers/ListingIntegrityLayer';
+import { AmenityPolygonsLayer } from './layers/AmenityPolygonsLayer';
 import { MapTooltip } from './MapTooltip';
 
 export function MapCanvas() {
@@ -35,6 +36,7 @@ export function MapCanvas() {
     'phase-intel-circles',
     'sc-circles',
     'listing-integrity-circles',
+    'amenity-fill',
   ];
 
   return (
@@ -64,6 +66,7 @@ export function MapCanvas() {
         <MacroExposureLayer />
         <ServiceChargesLayer />
         <ListingIntegrityLayer />
+        <AmenityPolygonsLayer />
       </MapGL>
 
       {tooltip && (

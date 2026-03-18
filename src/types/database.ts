@@ -378,3 +378,31 @@ export type TrustLevel =
 export type Verdict = 'BUY' | 'NEGOTIATE' | 'WAIT' | 'AVOID';
 
 export type Signal = 'BUY' | 'BUY_NOW' | 'ACCUMULATE' | 'HOLD' | 'REDUCE' | 'AVOID';
+
+/* ── Amenity Polygons (gold) ─────────────────────────────── */
+export type AmenityCategory =
+  | 'GREEN_SPACE'
+  | 'LEISURE_FACILITY'
+  | 'RETAIL_COMMERCIAL'
+  | 'COMMUNITY_FACILITY';
+
+export interface AmenityPolygon {
+  id: number;
+  community: string;
+  brochure_name: string;
+  amenity_category: AmenityCategory;
+  land_use: string;
+  render_color: string;
+  is_signature: boolean;
+  area_sqm: number;
+  centroid_lat: number;
+  centroid_lng: number;
+  polygon_geojson: GeoJSON.Geometry;
+}
+
+export interface AmenitySummary {
+  amenity_category: AmenityCategory;
+  render_color: string;
+  plot_count: number;
+  total_area_sqm: number;
+}
