@@ -311,7 +311,7 @@ export function AmenitiesPricePage() {
         if (qIdx < 0) return;
 
         const commVal = commValues[qIdx];
-        const lbl = ev.label_short || ev.amenity_name.slice(0, 14);
+        const lbl = ev.label_short || (ev.amenity_name ? ev.amenity_name.slice(0, 14) : "—");
         const icon = ev.icon || CAT_ICON[ev.amenity_category] || "📍";
 
         const xLabel = labels[qIdx];
@@ -450,7 +450,7 @@ export function AmenitiesPricePage() {
       select: "property_segment,psm_avg,psm_low,psm_high,yoy_price_change_pct,maturity_stage,data_period",
       master_community: `eq.${community}`,
       order: "psm_avg.desc",
-    });
+    }).catch(() => [] as PsmRow[]);
 
     Promise.all([indexP, catalystP, psmP])
       .then(([indexData, catalysts, psmData]: [IndexRow[], CatalystRow[], PsmRow[]]) => {
@@ -509,7 +509,7 @@ export function AmenitiesPricePage() {
           setStats((s) => ({ ...s, projCount: String(blds.length), projLbl: "Buildings (delivered)", amenCount: units.length + " unit types tracked" }));
           setProjects(
             blds.map((b) => {
-              const bu = (byBld[b.id] || []).sort((a, z) => a.bed.localeCompare(z.bed));
+              const bu = (byBld[b.id] || []).sort((a, z) => (a.bed || "").localeCompare(z.bed || ""));
               return {
                 name: `${b.name} ${b.handover ? b.handover.slice(0, 4) : ""}`,
                 chips: bu.map((u) => ({ label: `${u.bed} ${fmtAED(u.avg_sale_price)}`, hi: false })),
@@ -567,7 +567,8 @@ export function AmenitiesPricePage() {
           master_community: `eq.${community}`,
           order: "expected_completion_date.asc.nullslast",
           limit: "10",
-        }).then((data2: AmenityRow[]) => { if (!cancelled) { setAmenities(data2); setAmenLoading(false); } });
+        }).then((data2: AmenityRow[]) => { if (!cancelled) { setAmenities(data2); setAmenLoading(false); } })
+          .catch((e2: Error) => { if (!cancelled) { setAmenErr(e2.message); setAmenLoading(false); } });
       })
       .catch((e: Error) => { if (!cancelled) { setAmenErr(e.message); setAmenLoading(false); } });
 
