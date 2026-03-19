@@ -66,6 +66,7 @@ export interface CapitalFlow {
   qoqPricePct: number;
   yoyPricePct: number;
   rotationSignal: string;
+  cfiScore: number;
 }
 
 /* ── Rental Analysis ──────────────────────────────────────── */
@@ -278,8 +279,8 @@ export function useHomeData(): HomeData {
           .limit(80000),
         bronze().from('eibor_rates')
           .select('*').order('date', { ascending: false }).limit(12),
-        gold().from('capital_rotation_quarterly')
-          .select('quarter, area_name_en, txn_count, total_value_aed, avg_price, qoq_price_pct, yoy_price_pct, rotation_signal')
+        gold().from('capital_rotation_v2')
+          .select('quarter, area_name_en, txn_count, total_value_aed, avg_price, qoq_price_pct, yoy_price_pct, rotation_signal, cfi_score')
           .gte('txn_count', 10)
           .order('total_value_aed', { ascending: false }).limit(500),
         silver().from('rent_timeseries')
@@ -379,6 +380,7 @@ export function useHomeData(): HomeData {
             qoqPricePct: (r.qoq_price_pct as number) ?? 0,
             yoyPricePct: (r.yoy_price_pct as number) ?? 0,
             rotationSignal: (r.rotation_signal as string) ?? '',
+            cfiScore: (r.cfi_score as number) ?? 0,
           }))
         );
       }

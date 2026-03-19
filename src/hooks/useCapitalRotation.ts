@@ -10,12 +10,12 @@ export function useCapitalRotation(areaName: string | null) {
   useEffect(() => {
     setLoading(true);
     const query = areaName
-      ? gold().from('capital_rotation_quarterly')
+      ? gold().from('capital_rotation_v2')
           .select('*')
           .eq('area_name_en', areaName)
           .order('quarter', { ascending: false })
           .limit(8)
-      : gold().from('capital_rotation_quarterly')
+      : gold().from('capital_rotation_v2')
           .select('*')
           .order('total_value_aed', { ascending: false })
           .limit(50);

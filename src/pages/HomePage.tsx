@@ -128,13 +128,14 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
     .sort((a, b) => b.totalValueAed - a.totalValueAed);
 
   // Cross-quarter trend: aggregate total txns & value per area across all quarters
-  const areaAgg: Record<string, { txns: number; value: number; latestSignal: string; latestQ: string }> = {};
+  const areaAgg: Record<string, { txns: number; value: number; latestSignal: string; latestCfi: number; latestQ: string }> = {};
   capitalFlow.filter((c) => c.txnCount >= 10).forEach((c) => {
-    if (!areaAgg[c.area]) areaAgg[c.area] = { txns: 0, value: 0, latestSignal: '', latestQ: '' };
+    if (!areaAgg[c.area]) areaAgg[c.area] = { txns: 0, value: 0, latestSignal: '', latestCfi: 0, latestQ: '' };
     areaAgg[c.area].txns += c.txnCount;
     areaAgg[c.area].value += c.totalValueAed;
     if (!areaAgg[c.area].latestQ || c.quarter > areaAgg[c.area].latestQ) {
       areaAgg[c.area].latestSignal = c.rotationSignal;
+      areaAgg[c.area].latestCfi = c.cfiScore;
       areaAgg[c.area].latestQ = c.quarter;
     }
   });
@@ -211,6 +212,7 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
               <th className="pb-2 pr-3 text-right">Avg Price</th>
               <th className="pb-2 pr-3 text-right">QoQ</th>
               <th className="pb-2 pr-3 text-right">YoY</th>
+              <th className="pb-2 pr-3 text-right">CFI</th>
               <th className="pb-2">Signal</th>
             </tr>
           </thead>
@@ -223,6 +225,12 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                 <td className="py-1.5 pr-3 text-right font-mono text-gold">{fmtAed(c.avgPrice)}</td>
                 <td className="py-1.5 pr-3 text-right"><PctBadge value={c.qoqPricePct} /></td>
                 <td className="py-1.5 pr-3 text-right"><PctBadge value={c.yoyPricePct} /></td>
+                <td className="py-1.5 pr-3 text-right">
+                  <span className="font-mono text-[10px]"
+                    style={{ color: c.cfiScore >= 70 ? (isDark ? '#2DD4A0' : '#1B8A6B') : c.cfiScore >= 40 ? (isDark ? '#D4A843' : '#6B5518') : (isDark ? '#8892A4' : '#444444') }}>
+                    {c.cfiScore > 0 ? c.cfiScore : '—'}
+                  </span>
+                </td>
                 <td className="py-1.5">
                   <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
                     style={{ color: SIGNAL_COLOR[c.rotationSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable,
@@ -233,7 +241,7 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
               </tr>
             ))}
             {qData.length === 0 && (
-              <tr><td colSpan={7} className="py-4 text-center text-text-dim">No high-volume areas in this quarter</td></tr>
+              <tr><td colSpan={8} className="py-4 text-center text-text-dim">No high-volume areas in this quarter</td></tr>
             )}
           </tbody>
         </table>
@@ -250,6 +258,7 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                 <th className="pb-2 pr-3">Area</th>
                 <th className="pb-2 pr-3 text-right">Total Txns</th>
                 <th className="pb-2 pr-3 text-right">Total Value</th>
+                <th className="pb-2 pr-3 text-right">CFI</th>
                 <th className="pb-2">Latest Signal</th>
               </tr>
             </thead>
@@ -260,6 +269,12 @@ function CapitalTab({ capitalFlow, loading }: { capitalFlow: CapitalFlow[]; load
                   <td className="py-1.5 pr-3 text-text-primary truncate max-w-[140px]">{area}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{fmtNum(agg.txns)}</td>
                   <td className="py-1.5 pr-3 text-right font-mono text-gold">AED {(agg.value / 1e9).toFixed(2)}B</td>
+                  <td className="py-1.5 pr-3 text-right">
+                    <span className="font-mono text-[10px]"
+                      style={{ color: agg.latestCfi >= 70 ? (isDark ? '#2DD4A0' : '#1B8A6B') : agg.latestCfi >= 40 ? (isDark ? '#D4A843' : '#6B5518') : (isDark ? '#8892A4' : '#444444') }}>
+                      {agg.latestCfi > 0 ? agg.latestCfi : '—'}
+                    </span>
+                  </td>
                   <td className="py-1.5">
                     <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
                       style={{ color: SIGNAL_COLOR[agg.latestSignal?.toLowerCase()] ?? SIGNAL_COLOR.stable,

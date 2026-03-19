@@ -32,7 +32,7 @@ export interface RentTimeseries {
   renewal_pct: number;
 }
 
-/* ── Capital Rotation (gold) ───────────────────────────────── */
+/* ── Capital Rotation (gold.capital_rotation_v2) ─────────────── */
 export interface CapitalRotation {
   quarter: string;
   area_name_en: string;
@@ -44,6 +44,7 @@ export interface CapitalRotation {
   qoq_price_pct: number;
   yoy_price_pct: number;
   rotation_signal: string;
+  cfi_score: number;
 }
 
 /* ── Developer Scores (gold) ───────────────────────────────── */
